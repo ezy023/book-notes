@@ -1,0 +1,152 @@
+\documentclass{article}
+\usepackage{qtree}
+\usepackage{amsmath}
+
+\title{SICP Notes: Chapter 1 - Building Expressions with Procedures}
+\author{Erik}
+\date{December 2018}
+\begin{document}
+\begin{titlepage}
+  \maketitle
+\end{titlepage}
+
+\begin{itemize}
+\item Well-designed computational systems are dsigned in a modular manner, so that the parts can be constructed, replaced, and debugged separately
+\item The programming language serves as a framework within which we organize our ideas about processes.
+  \begin{itemize}
+  \item Ways a language provides for combining simple ideas to form more complex ideas:
+    \begin{itemize}
+    \item \textbf{primitive expressions}: simplest entities a language is concerned with
+    \item \textbf{means of combination}: means for building compound elements from smaller ones
+    \item \textbf{means of abstraction}: means for naming and manipulating compound elements as units
+    \end{itemize}
+  \end{itemize}
+\item LISP
+  \begin{itemize}
+  \item The leftmost element in a list is the \underline{operator}, and the other elements are \underline{operands}.
+  \item The evaluation of LISP is in its nature \underline{recursive}. To evaluate an expression you must evaluate the sub-expressions first.
+    \begin{itemize}
+    \item Thus combinations can be represented as trees.
+    \item (+ (* 2 3) (- (+ 4 6) 5))
+      \item \Tree [.\textit{11} +
+        [.\textit{6} * 2 3 ]
+        [ -
+          [ + 4 6 ].\textit{10}
+          5
+        ].\textit{5}
+      ]
+    \end{itemize}
+  \item Eventually evaluation of sub-expressions leads to the evaluation of primitives (numerals, built-ins, operators, names).
+  \item Exceptions to general evaluation are called \underline{special forms}
+    \begin{itemize}
+    \item i.e. (define x 3), define is not applied to two operands
+    \end{itemize}
+  \item \underline{Procedure definitions}: abstraction technique where a compound operation can be given a name and referred to as a unit
+    \begin{itemize}
+    \item General form: $(define\; (\:\langle name \rangle\: \langle formal\: parameters \rangle\:) \:\langle body \rangle\:)$
+      \begin{itemize}
+      \item \underline{name}: symbol to be associated with procedure definition in the environment
+      \item \underline{formal params}: names used within the body of the procedure
+      \end{itemize}
+    \end{itemize}
+  \item In general, when modeling phenomena in science or engineering, we begin with simplified, incomplete models and replace them with more refined ones as they become inadequate.
+  \item \underline{Normal order evaluation}: ``fully expand then reduce''. Don't eval until values are needed
+  \item \underline{Applicative order evaluation}: ``evaluate the args then apply''.
+  \item \underline{Predicate}: procedures that return true or false
+  \item Important difference between mathematical $f(x)$s and computer procedures. Procedures must be effective
+    \begin{itemize}
+    \item In math we are usually concerned with declarative (what is) descriptions (describing properties of things)
+    \item Whereas in computer science we are usually concerned with imperative (how to) descriptions (how to do things)
+    \end{itemize}
+    \noindent\fbox{%
+      \parbox{\textwidth}{%
+      \textbf{Note}: Method for finding the sqrt of a number (radicand)
+        \begin{itemize}
+        \item In $\sqrt{x}$, 'x' is called the radicand (the number we want the sqrt of)
+        \item First, make a guess and refine the guess until its square ($guess^2$) is within an acceptable margin of error. To do so:
+          \begin{itemize}
+          \item Divide the radicand by the guess to yield the quotient $\frac{radicand}{guess}$
+          \item Take the average of the quotient and the guess $\frac{quotient + guess}{2}$
+          \item See if the square of the average is within an acceptable margin of error. $radicand - average^2 \leq acceptable margin$
+          \item If not repeat the process with the average as the new guess, if acceptable yield the result
+          \end{itemize}
+        \end{itemize}
+      }%
+      }
+  \item The importance of the decomposition strategy in approaching a problem is that each procedure accomplishes an identifiable task that can be used as a module in defining other procedures.
+  \item A procedural definition should be able to suppress detail. This creates a procedural abstraction meaning a user should not be concerned with how a procedure is implemented in order to use it
+  \item \underline{Lexical scoping}: free variables in a procedure get their value from the environment in which the procedure is defined
+  \end{itemize}
+\item The ability to visualize the consequences of the actions under consideration is crucial to becoming a good programmer.
+\item A \underline{recursive process} is characterized by a chain of deferred operations
+\item An \underline{iterative process} is one whose state can be summarized by a fixed number of state variables, together with a rule that describes how the state variables should be updated as the process moves from state to state, and end test to specify how the process terminates.
+\item A recursive \underline{procedure} is one that is defined by referring to itself (syntax). A recursive \underline{process} describes how a process evolves.
+\item \underline{Tail-recursive} is a characteristic of a process that can execute an iterative process in constant space, even if the procedure is a recursive procedure.
+\item In general, the number of steps required in a tree recursive process will be proportional to the number of nodes in the tree, while the space required will be proportional to the tree depth
+\item \underline{Tabulation} or \underline{memoization}: Storing already computed values in a table to avoid recomputing them.
+\item \underline{Order of Growth} ($O(n)$) provides a useful indication of how we may expect the behavior of the process to change as we change the size of the problem.
+
+  \noindent\fbox{%
+    \parbox{\textwidth}{%
+      \underline{Greatest Common Denominator}: the largest number that divides evenly into a set of numbers
+      \begin{itemize}
+      \item \underline{Euclid's Algorithm}: The greatest common denominator (GCD) of \textit{a} and \textit{b} are the same as the common divisors of \textit{b} and \textit{r} ( \textit{r} is the remainder of $\frac{a}{b}$)
+      \end{itemize}
+    }%
+  }
+
+  \noindent\fbox{%
+    \parbox{\textwidth}{%
+      Testing for Primes
+      \begin{itemize}
+      \item If \textit{n} is not prime it must have a divisor less than or equal to $\sqrt{n}$.
+      \end{itemize}
+    }%
+  }
+
+\item Procedures are abstractions that describe compound operations on variable input parameters.
+\item Procedures that manipulate other procedures are called \underline{higher order procedures}
+\item The presence of a common pattern is strong evidence that there is a useful abstraction waiting to be brought to the surface
+\item Lambda special form:
+  \begin{itemize}
+  \item $(lambda\; (\:\langle formal\: params \rangle\:)\; \langle body \rangle\:)$
+  \item A lambda is the same as a procedure defined with \emph{define} but it is not associated with any name in the environment
+  \end{itemize}
+
+\item Let expressions:
+  \begin{itemize}
+  \item General form:
+    \begin{equation}
+      \begin{split}
+        (let \;((\:\langle var_1 \rangle \;\langle exp_1 \rangle\:)) \\
+        ((\:\langle var_1 \rangle \;\langle exp_1 \rangle\:)) \\
+        ((\:\langle var_1 \rangle \;\langle exp_1 \rangle\:)) \\
+        \langle body \rangle\;)
+      \end{split}
+    \end{equation}
+    \item Its another use of the lambda; the form above is the same as:
+    \begin{equation}
+      \begin{split}
+        ((\:lambda\;(\:\langle var_1 \rangle\;...\langle var_n \rangle\;) \\
+        \langle boddy \rangle\;) \\
+        \langle exp_1 \rangle \\
+        ... \\
+        \langle exp_n \rangle)
+      \end{split}
+    \end{equation}
+    Thus no new mechanism is required in the interpreter
+  \end{itemize}
+\item A number $x$ is called a fixed point of a function $f$ if $f(x) = x$
+\item The approach of averaging successive approximarions to a solution, \underline{average damping}, aids in convergence of fixed point searches.
+  \begin{itemize}
+  \item Given the function $f()$, we consider the function whose value at $x$ is equal to the average of $x$ and $f(x)$
+  \end{itemize}
+\item As programmers, we should be alert to opportunities to identify the underliying abstractions in our program s and to build upon them and generalize them to create more powerful abstractions.
+  \begin{itemize}
+  \item But choose the level of abstraction appropriate to the task
+  \end{itemize}
+\item Experienced programmers know how to choose procedural formulations that are clearly expresseed and easily understood, and where useful elements of the process are exposed as separate entities that can be reused in other applications
+  \item \underline{Iterative improvement}: Start with an initial guess for an answer, check if the guess is good enough, and otherwise improve the guess and continue the process with the improved guess as the new guess
+\end{itemize}
+
+\end{document}

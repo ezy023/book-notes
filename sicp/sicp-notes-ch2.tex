@@ -1,0 +1,107 @@
+\documentclass{article}
+\usepackage{qtree}
+\usepackage{amsmath}
+
+\title{SICP Notes: Chapter 2 - Building Abstractions with Data}
+\author{Erik}
+\date{March 2019}
+\begin{document}
+\begin{titlepage}
+  \maketitle
+\end{titlepage}
+
+\begin{itemize}
+\item  \underline{Compound data}: Abstractions built by combining data structrues
+  \begin{itemize}
+  \item Like compound procedures, compound data allows us to elevate the conceptual level at which we design our programs, increase the modularity of design, and enhance the expressive power of our language
+  \end{itemize}
+\item \underline{Data abstraction}: The general technique of isolating parts of a program that deal with how data objects are represented from the parts of a program that deal with how data objects are used.
+\item The use of compound data leads to a real increase in the expressive power of a programming language
+\item A procedure used as an element in createing a more complex procedure is not only a collection of particular operations but also a \underline{procedural abstraction}.
+  \begin{itemize}
+  \item \underline{Procedural abstraction}: Separation of the way a procedure is used from how it is implemented
+    \begin{itemize}
+    \item The details of the procedure's implementation are suppressed and the procedure could be replaced by any other procedure with the same overall behavior.
+    \end{itemize}
+  \end{itemize}
+\item The basic idea of \underline{data abstraction} is to structure programs that use compound data so they operate on  \textbf{abstract data}
+\item Thus, programs should use data in a way as to make no assumptions about the data that are not strictly necessary for performing the task at hand.
+\item \textbf{Concrete} data representation is defined independent of the programs that use the data
+\item \noindent\fbox{%
+    \parbox{\textwidth}{%
+    LISP Notes:
+    \begin{itemize}
+    \item \underline{cons}: \textit{construct} a data structure of two elements, a \textbf{pair}
+    \item \underline{car}: From original LISP, stands for \textit{Contents of Address part of Register}
+    \item \underline{cdr}: From original LISP, stands for \textit{Content of Decrement part of Register}
+    \end{itemize}
+  }%
+  }
+\item Data objects structured from pairs are called \textbf{list-structured data}
+\item The underlying idea of data abstraction is to identify for reach type of data object a basic set of operations in terms of which all manipulations of data objects of that type will be expressed, then to use only that operations in manipulating the data
+\item The ability to create pairs whose elements are pairs is an ability referred to as the \textbf{closure property} of \textbf{cons}.
+  \begin{itemize}
+  \item \underline {Closure property}: an operation for combining data objects satisfies the closure property if the results of combining things with that operation can themselves be combined use the same operation
+  \item This permits us to create hierarchical structures
+  \end{itemize}
+\item \underline{Sequence (data structure)}: An ordered collection of data objects
+  \begin{itemize}
+  \item One example in Scheme is a \textbf{list}.
+    \begin{itemize}
+    \item There is a Scheme primitive for \textbf{list}.
+    \item $(list \langle a_1 \rangle \langle a_2 \rangle \dots \langle a_n \rangle)$
+    \end{itemize}
+  \item \textbf{car} returns the first item in a list
+  \item \textbf{cdr} returns a sublist of all but the first item in the list
+  \end{itemize}
+\item
+  \noindent\fbox{%
+    \parbox{\textwidth}{%
+      Scheme Note:
+      \begin{itemize}
+      \item Scheme provides a primitive \textit{null?} operation that tests whether its argument is equal to the empty list '()
+      \end{itemize}
+    }%
+  }
+\item \underline{Mapping over a list}: apply some transformation to each element in a list and generate a list of results
+  \begin{itemize}
+  \item \textbf{Map} is an important construct not only because it captures a common pattern, but because it establishes a higher level of abstraction in dealing with lists
+    \begin{itemize}
+    \item It suppresses the details of processing each element of a list which allows us to think about the process as the transformation of a list of elements
+    \item Map establises an abstraction barrier that isolates the implementation of procedures that transform lists from the details of how individual elements are extracted and combined.
+    \end{itemize}
+  \end{itemize}
+\item Another way to think of sequences of sequences is as \underline{trees}.
+  \begin{itemize}
+  \item The elements of the sequence are branches of the tree and the elements that are sequences are subtrees
+  \item \Tree [.{((1 2) 3 4)}
+    [.{(1 2)}
+      1
+      2 ]
+    3
+    4 ]
+  \end{itemize}
+\item Recursion is a natural tool for dealing with tree structures since we can often reduce operations on trees to operations on their branches, which reduces to operations on branches of branches, until reaching the leaves of the tree
+\item Abstraction preserves for us the flexibility to experiment with alternative representations
+\item The value in expressing programs as sequence operations is that it helps make programs more modular (designs constructed by combining relatively independent pieces).
+\item Modular construction is a powerful strategy for controlling complexity in engineering design.
+\item It is important to describe a language by focusing on its primitives , its means of combination, and its means of abstraction
+\item Lessons from the Picture Language example
+  \begin{itemize}
+  \item The fundamental data abstractions, painters, are implemented using procedural representations, which enables the language to handle different basic drawing capabilities in a uniform way.
+  \item The means of combination satisfy the \underline{closure property}, permitting us to easily build up complex designs
+  \item The idea of \underline{stratified design}:
+    \begin{itemize}
+    \item The notion that a complex system should be structured as a sequence of levels that are described using a sequence of languages.
+      \begin{itemize}
+      \item Each level is constructed by combining parts considered primitive at that level.
+        \item Parts constructed at each level are used as primitives at the next level.
+      \end{itemize}
+    \item Stratified design helps make programs \underline{robust}.
+      \begin{itemize}
+      \item \underline{Robust}: small changes in a specification will require coreespondingly small changes in the program
+      \end{itemize}
+    \end{itemize}
+  \end{itemize}
+\end{itemize}
+\end{document}
