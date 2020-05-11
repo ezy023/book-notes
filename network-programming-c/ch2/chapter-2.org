@@ -1,0 +1,47 @@
+* Chapter 2
+*** What are sockets?
+A socket is one endpoint of a commmunication link between systems. All network data sent and received is through a socket.
+
+Historically, sockets were used for inter-process communication (IPC) and various network protocols
+
+Sockets come in two basic types:
+- *connection-oriented*
+- *connectionless*
+
+The two protocols used today are *Transmission Control Protocol (TCP)*, a connection-oriented protocol. And *User Datagram Protocol (UDP)*, a connectionless protocol.
+
+**** UDP
+In UDP, a connectionless protocol, each packet is addressed individually. Each data packet is independent and unrelated to other packets from the protocol's perspective.
+
+UDP makes no guarantee a packet will arrive, does not provide a way to determine if a packet did arrive, and does not guarantee packets will arrive in the same order they were sent.
+
+Used by DNS. An entire request and response can fit into a single packet.
+
+**** TCP
+TCP, a connection-oriented protocol, guarantees the data arrives in the same order it was sent and prevents duplicate data from arriving twice by numbering packets. It also retries data if it does not receive acknowledgement from the receiver that a specific packet arrived.
+
+Used by many protocols:
+- HTTP
+- FTP
+- SMTP
+- SSH
+
+**** Helpful development note
+It is generally a good idea to work out your program's functionality locally before adding in networked features
+
+*** First Program notes
+- Only privileged uses on Unix-like operating systems can bind to ports 0 through 1023
+- The advantage to using ~getaddrinfo()~ over manually filling in a ~struct addrinfo~ is that ~getaddrinfo()~ is protocol agnostic. It would require only minor changes to a ~getaddrinfo()~ call to make a program compatible with IPv6 whereas filling out a ~struct addrinfo~ directly would require multiple tediaous changes to make the same program IPv6 compatible.
+
+*** inetd
+On Unix-like operating systems, a service called ~inetd~ can be used to turn console-only applications into networked ones. It is configured with ~/ext/inetd.conf~
+
+** Questions
+1. A socket is an abstraction representing one endpoint of networked communication
+2. A connectionless protocol sends packets that are independent of one another. A connection oriented protocol sends packets that represent part of a larger stream of data
+3-4. UDP is connectionless. TCP is connection oriented
+5. Applications that transmit realtime data, video streaming, multiplayer gaming, benefit from UDP
+6. Any application that needs a reliable transfer of data benefits from TCP
+7. TCP guarantees data is transmitted successfully to some extent, although you can never truly guarantee successful data transmission
+9. bind() binds a socket to a local network  address and port number.
+10. accept() blocks waiting for a new TCP connection request, at which point it creates a new socket representing the established connection
