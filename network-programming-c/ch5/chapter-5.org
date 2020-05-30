@@ -1,0 +1,88 @@
+* Chapter 5
+Hostname Resolution and DNS
+
+*Domain Name System (DNS)* allows us to resolve hostnames to IP addresses, and IP addresses to hostnames
+
+** How DNS works
+DNS allows us to link a hostname to an IP address.
+- We've used ~getaddrinfo()~ to resolve hostnames to IP addresses thus far. What it does is:
+  - First, the OS checks whether it already knows the IP address for the hostname. It checks its local cache. DNS records in a local cache have a TTL set by the DNS server responsible for the hostname.
+- If the hostname is not in the cache, the OS queries a DNS server.
+- The DNS server checks its local cache
+- If the IP address is not in the DNS server's local cache it queries other DNS servers until it connects directly to the DNS server responsible for the target hostname.
+
+Resolving a hostname can result in a lot of messages sent back and forth which makes it very important for DNS servers to implement caching.
+
+*** DNS record types
+There are five main record types. Each record type also has an associated type ID for sending queries.
+**** A
+- Type ID: 1
+- Used to resolve IPv4 hostnames
+**** AAAA
+- Type ID: 28
+- Used to resolve IPv6 hostnames
+**** MX
+- Type ID: 15
+- Used to return mailserver information, e.g. sending emails
+**** TXT
+- Type ID: 16
+- Used to store arbitrary information for a hostname
+**** CNAME
+- Type ID: 5
+- Used to provide an alias for a given name
+- Clients do not query for ~CNAME~ records directly, instead they query for ~A~ or ~AAAA~ records and the DNS server responds with a CNAME, which the client continues the query with
+**** * (ALL/ANY) psuedo-record type
+- Type ID: 255
+- If a DNS server is queried for this record it returns all known record types for the query.
+*Note* It is not guaranteed to actually get all the records for the requested domain.
+
+There are many other record types, but these are the main ones.
+
+*** DNS security
+DNS is still widely used in an unsecured manner, though protocols for securing DNS do exist but are not widely adopted.
+
+- *Domain Name System Security Extensions (DNSSEC)* providedata authentication which allows DNS replys to be verified as authentic but doesn't prevent eavesdropping.
+- *DNS over HTTPS (DoH) provides resolution over HTTPS with the security guarantees of HTTPS.
+
+Unauthenticated DNS could allow an attacker to lie about a domain name's IP address, tricking someone to connecting to a server that is malicious.
+Unecrypted DNS queries are susceptible to eavesdropping allowing someone to see the hostnames you are visiting, although not allowing them to know what you do on the hosts.
+
+
+** Name/address translation functionsz
+- ~getaddrinfo()~ translates text-bases addresses or hostnames into an address structure
+- ~getnameinfo()~ translates binary addresses back to text format
+
+*** ~getaddrinfo()~
+Calls to ~getaddrinfo()~ only look at four fields in the ~hints~ structure (~struct addrinfo~)
+- ~ai_family~ specifies desired address family, e.g. IPv4 or IPv6
+- ~ai_socktype~ specifies TCP, UDP, or either to be used for the address
+- ~ai_protocol~ should be left to 0, but it is used to disambiguate between other streaming protocols (in the case of TCP) or datagram protocols (UDP)
+- ~ai_flags~ additional options for how ~getaddrinfo()~ should work
+
+*** ~getnameinfo()~
+Used to convert an ~addrinfo~ structure back into text format
+Attempts to perform a reverse DNS lookup of "which hostname does this IP address point to?".
+
+** The DNS protocol
+To resolve a hostname a client sends a query to a DNS server, typically done over UDP on port 53. DNS server performs lookup and returns answer.
+- If a query or answer is too large to fit in a single UDP packet it can be performed using TCP. This is *TCP fallback* or *DNS transport over TCP*
+
+The client must know the IP address of at least on DNS server.
+
+*** DNS message format
+Contains the following sections
+- Header
+- Question
+- Answer
+- Authority
+- Additional
+
+**** Endianness
+*endianness* refers to the order in which individual bytes are stored in memory or sent over a network.
+
+Network byte order, used by DNS, specifies that the high-order byte is sent first.
+
+**** DNS message name
+DNS message names are encoded in a particular way. Each label is indicated by its length followed by its text. Labels can repeat, names are terminate wth a single 0 byte
+
+If a length has its two highest bits set (~0xc0) the next byte should be interpreted as a pointer instead.
