@@ -1,0 +1,54 @@
+* Chapter 9 - Loading Secure Web Pages with HTTPS and OpenSSL
+
+*Hypertext Transfer Protocol Secure (HTTPS)* gives an authentication method to identify servers and detect impostors. It also protects the privacy of all transmitted data and prevents interceptors from tampering with or forging transmitted data. In HTTPS, communication is secured using *Transport Layer Security (TLS)*
+
+** HTTPS overview
+- HTTPS secures HTTP using TLS on port 443.
+- TLS is a protocol that can secure any TCP connection. It is a successor to *Secure Socket Layer (SSL)*
+
+Protocol Security:
+- *Authentication*: prevent impostors from posing as legitimate communication partners
+- *Encryption*: obfuscate transmitted data to prevent eavesdropping
+- *Integrity*: ensure received data hasn't been tampered with
+
+TLS works inside TCP. HTTPS is basically the same as HTTP but sent within a TLS channel.
+
+*** Encryption Basics
+*Encryption* is a method of encoding data so that only authorized parties can access it.
+
+Ecryption algorithms are called *ciphers* which take in plaintext and produce encrypted data, or ciphertext.
+
+Two types of categories for ciphers, symmetric and asymmetric
+- Symmetric ciphers use the same key for both encryption and decryption
+  - Key exchange algoritms attempt to address the problem of securely sharing a secret key.
+- Asymmetric ciphers use two different keys
+  - Also known as public-key encryption
+  - Used to implement digital signatures to verify the authenticity of data
+
+*** How TLS uses ciphers
+Asymmetric ciphers could be used to protect entire communications channels, but they are currently too inefficient which is why symmetric ciphers are preferred when possible.
+TLS uses asymmetric ciphers to authenticat the server, then uses key exchange algoritms and symmetric ciphers to secure the actual communication
+
+TLS uses *cipher suites* containing a list of algorithms -- key exchange, bulk encryption algorithm, and message authentication algorithm (MAC). On connection the TLS client sends a list of preferred cipher suites, if the server does not support on of the suits the connection cannot be established.
+
+*** The TLS protocol
+**** Certificates
+Each HTTPS server uses one or more certificates to verify their identity. Each must be trusted by the client or by a third party that the client trusts. Trust is proven using digital signatures.
+Certificate chains can be several layers deep but as long as you can verify digital signatures back to a certificate you trust you can validate the whole chain.
+
+*Server Name Indication (SNI)* is used by TLS to require the client to indicate to the webserver which domain it is trying to connect to so the server can find a matching certificate for the TLS connection.
+
+Certificate 'subject' should match the domain we are connecting to, and the 'issuer' should be a certificate authority we trust
+
+*** OpenSSL
+*OpenSSL* provides SSL and TLS services to applications.
+
+TLS works only with TCP connections, but *Datagram Transport Layer Security (DTLS)* aims to provide security for UDP datagrams.
+
+** Questions
+1. HTTPS typically operates on port 443
+2. Symmetric encryption uses one key that is shared between peers
+3. Asymmetric encryption uses two keys, usually one private and one public key
+4. TLS uses asymmetric encryption to verify certificates but uses symmetric encryption to secure the data sent on the communication channel
+5. TLS is the successor to SSL but is mostly backwards compatible
+6. Certificates fulfill the Authentication purpose of securing connections. They allow you to validate the peer you are communicating with can be trusted.
