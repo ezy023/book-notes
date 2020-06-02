@@ -1,0 +1,51 @@
+* Chapter 13 - Socket programming tips and pitfalls
+
+*** Error Handling
+A robust program design dictates that you carefully consider how to handle errors. Many programmers focus on the happy path, but it is equally important to consider the program flow when everything goes wrong.
+
+*** TCP socket tips
+The TCP connection lifespan can be divided into three distinct phases
+- The setup phase
+- The data-transfer phase
+- The tear-down phase
+
+**** TCP connect()
+***** TCP three-way handshake
+1. Client sends a *Synchronize (SYN)* message to Server
+2. Server response with a SYN message of its own combined with an *Acknowledged (ACK)* message of the Client's SYN message.
+3. The client then responds with an ACK of the Server's SYN message.
+4. The connection is then open and ready for data transmission
+
+If ~connect()~ cannot establish a connection successfully then it eventually times outs. This timeout period is controlled by the OS.
+
+**** TCP deadlocks
+When data is sent over a TCP connection it is broken up into segments. A few segments are sent immediately but additional segments are not sent until the first segments are acknowledged by the receiving peer.
+This flow-control mechanism ensures the sender isn't transmitting faster than the reciver can handle.
+With this mechanism you need to be careful to avoid deadlocks.
+TCP is a full-duplex protocol which allows applications to send and receive data simultaneously.
+
+**** TCP congestion control
+Flow control is vital to prevent overwhelming the receiver, congestion control is essential to prevent overwhelming the network
+One way congestion control is implemented is by allowing only a limited amount of data to be sent before pausing for acknowledgement
+Another is through the *TCP slow start algorithm* which provides a way for TCP to ramp-up a connection to its full potential instead of dumping data onto the network at once
+- TCP slow start can cause issues for short lived connections as they may never reach their full connection potential.
+
+**** TCP bandwidth efficiency
+There is a lot of overhead in sending data across a TCP connection. Each segment of data uses bytes for TCP bookkeeping and bytes for the IPv4 header, in addition to the bytes used by the application data being sent.
+The *Nagle algorithm* makes the sender pool small amounts of data together until there is enough to justify sending it.
+- A small segment of data is anything less that the *Maximum Segment Size (MSS)*
+
+Prefer doing one large write to ~send()~ instead of many small ones when possible.
+
+In some applications you need to send small packets immediately, e.g. multiplayer gaming player commands, and it makes sense to disable the Nagle algorithm to reduce latency at the expense of decreased bandwidth efficiency..
+
+**** Connection tear-down
+TCP connection are *full-duplex* meaning data being sent is independent of data being received. And that the connection must be closed by both sides.
+To close a connection each side sends a *Finish (FIN)* message and receives an ACK from their peer
+
+When a TCP socket is open for full-duplex communication it is in the ~ESTABLISHED~ state.
+
+It is often easier to use an application protocol that clearly indicates the end of the transaction.
+
+When an application initiates a TCP socket close (or disconnects by crashing) the socket goes into a ~TIME-WAIT~ state and the OS can continue to keep track of the socket some time, potentially minutes.
+- The ~TIME-WAIT~ stat is essential to TCP's reliability and messing with sockets in this state can cause problems.
