@@ -1,0 +1,32 @@
+* Chapter 4
+Chapter 4 focus is on sending and receiving *User DatagramP Protocol (UDP)* packets.
+** How UDP sockets differ
+- UDP does not try to be a reliable protocol
+  - Lost packets are not re-transmitted
+  - packets may be received in a different order than they were sent
+
+*** UDP client methods
+TCP requires calling ~connect()~ to establish the TCP connection. UDP is a connection-less protocol so there is no need to establish a connection to send data.
+- With UDP data is simply sent and received
+- ~connect()~ on a UDP socket just associates a remote address (stores an address locally), whereas ~connect()~ on a TCP socket involves a handshake.
+- With UDP you can use ~connect()~, ~send(), and ~recv()~, or instead use ~sendto()~ and ~recvfrom()~
+  - When using ~connect()~ a UDP client only receives data from the perr having the IP address and port given to ~connect()~
+  - The ~recvfrom()~ function returns data from any peer that addresses us, but the peer would need to know the specific adddress and port.
+     - *Note* The operating system assigns a local address and port automatically, unless we call ~bind()~
+
+*** UDP server methods
+Dfiferent than programming a server for TCP. TCP requires maanging a socket for each peer connection. UDP only needs to manage a single socket to communicate with any number of peers
+
+With either TCP or UDP server we use ~select()~ to monitor sockets for incoming data.
+
+** Questions
+1. ~sendto()~ and ~recvfrom()~ differ from ~send()~ and ~recv()~ because no connection needs to be established with a peer to send or receive data. With ~sendto()~ and ~recvfrom()~ you can send or recieve data to/from any peer.
+2. ~send()~ and ~recv()~ can be used on UDP sockets, yes, but they are not necessary becuase UDP is a connection-less protocol, unlike TCP. If they are used with a UDP socket ~connect()~ should be called first.
+3. ~connect()~ in the context of UDP associates the remote address with the socket and stores it locally.
+4. Muliplexing with UDP is easier because you do not need to maintain a set of open socket connections. Since UDP is connection-less you can just monitor a single socket for incoming UDP packets and send data back to the peer without needing to hold on to the socket file descriptor
+5. The downsides of UDP are it is
+   1. Unreliable, data may be lost and there is no acknowledgement of data received
+   2. Limited in the data it can send because data is limited to a single packet
+   3. Packets are not ordered and there is no guarantee to their arrival order, or even amount (the same packet may arrive twice)
+   4. There is no re-transmission of lost packets
+6. The same program can use UDP and TCP, and ~select()~ can be used to monitor an ~fd_set~ that contains socket file descriptors for both protocols

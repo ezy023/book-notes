@@ -1,0 +1,43 @@
+* Chapter 3
+
+*** Multiplexing TCP connections
+- The socket APIs are blocking by default
+
+**** Non-blocking IO options (multiplexing connections)
+***** Polling
+You can configure a socket to use non-blocking IO using ~fcntrl()~ and setting the ~O_NONBLOCK~ flag. With this flag set, calls to the normally blocking ~recv()~ call will return immediately if there is no data. You could constantly call ~recv()~ on sockets to see if there is data, this is *polling*. It is generally a waste of computer resources, however, because you are doing work while most of the time there is no data to be read. It also requires the program to manually track all of its sockets and their state.
+Polling is a less-than ideal solution to non-blocking sockets
+***** Forking and multithreading
+Start a new thread or process for each connection. Sockets still block but they only block their thread or process.
+Downsides:
+- Threading is tricky to get right
+- Different operating systems provide different APIs for these features
+- Hard to manage shared state amongst threads/processes
+***** The ~select()~ function
+~select()~ can be passed a set of sockets and it will inform which sockets are ready to be read, which are ready to be written to, and which have exceptions.
+~select()~ also requires we pass in a number that is larger than the largest socket descriptor we are going to monitor
+
+On Unix-based systems ~select()~ can also be used to monitor other file descriptors such as those associated with files or terminal I/O
+
+*** A TCP client
+- ~connect()~ associates a socket with a remote address whereas ~bind()~ associates a socket with a local address.
+- A common paradigm in TCP socket programming is to ignore errors on ~send()~ and detect and handle them on ~recv()~ which allows for simpler programs by keeping connection closing login in one place.
+
+*** A TCP server
+- When ~send()~ is called with an amount of data, it first copies the data to a buffer provided by the operating system. If ~send()~ is called when the outgoing buffer is full the call blocks until the buffer has emptied enough to accept more data.
+- In some cases ~send()~ will return instead of block, e.g. the program receives a signal from the OS, in which case ~send()~ will return the number of bytes actually copied to the buffer and its up to the caller to retry with the rest of the data.
+- If a program is managing multiple sockets and does not want to block on ~send()~ it should put sockets with pending ~send()~ calls into an ~fd_set~ and pass it as the third parameter -- the ~fd_set~ of write sockets -- to ~select()~. When ~select()~ signals on those sockets you know they are ready to accept more data.
+
+*** Misc
+- TCP is a stream protocol. Data can be sent and read in various chunks and there is no way to tell that data sent in two ~send()~ calls of 10 bytes each will be read by two ~recv()~ calls of 10 bytes each, the ~recv()~ calls may read it all in one call, or it may take three, there is no way to tell. Much like writing to a file, there is no way to determine how the chunks of bytes written to a file will be read, or what size the chunks of bytes were when written to the file when reading the file.
+  - Thus it is important to buffer received data until enough has accumulated to warrant processing.
+- UDP is not a stream protocol and a pakcet is received with exactly the same contents it was sent with, which can make handling UDP somewhat easier.
+
+** Questions
+1. Use the ~select()~ function to indicate which sockets are ready to be read from
+2. You can pass a ~struct timeval~ timeout to select to specify the maximum interval to wait for the select to complete.
+3. When connected to a webserver, when sending a HTTP request the blank line informs the server of the end of the request string.
+4. ~send()~ does block, it will block if the internal buffer provided by the operating system is full. The call will block until data has been flushed from the buffer and the buffer can accept more data
+5. We can tell if a socket has been disconnected by a peer if we get a 0 byte sized read.
+6. Since TCP is a stream protocol the data received by ~recv()~ is not alwyas the same size as the data send by ~send()~. There is no way to tell what sized chunks the data send by ~send()~ was sent in, and correspondingly there is no way to determine what sized chunks the data is read in by ~recv()~.
+7. The data read by ~recv()~ is not null-terminated so the print calls will write arbitrary bytes of data to stdout if not bound by a string widt format specifier.

@@ -1,0 +1,102 @@
+* Chapter 1
+** Open Systems Interconnection Layer Model
+*Protocols* are agreed upon standards that define communication
+*** The OSI Layer Model has 7 layers
+1. Physical: Level of physical communication in the real world. Specifications for thihngs like the voltage levels on an Ethernet cable, radio frequency of wifi, light flashes over an optic fiber
+2. Data Link: Deals with protocols for directly communicating between two nodes. Defines how a direct message between nodes starts and ends (framing), error detection and correction, and flow control
+3. Network Layer: Provides methods to transmit data sequencdes (packets) between nodes in different networks. Provides methods to rout packets from one node to another through many intermediate nodes. This is the layer the Internet Protocol is defined on.
+4. Transport layer: Methods to reliably deliver variable length data between hosts. These methods deal with splitting up data, recombining it, ensuring it arrives in order, etc. TCP and UDP are said to exist on this layer
+5. Session layer: Builds on the transport layer by adding methods to establish, checkpoint, suspend, resume, and terminate dialogs
+6. Presentation layter: Lowerst layer at which data structure and presentation for an application are defined. Data encoding, serialization, and encryption are handled here
+7. Application layer: fThe applications a user interfaces with (e.g. web browsers, email).
+
+Chunks of data are often referred to by different names depending on the OSI layer they're on.
+- Data unit on layer 2 is a *frame*
+- On layer 3 its referred to as a *packet*
+- On layer 4 its a *segment* if part of a TCP connection, a *datagram* if part of a UDP message
+
+*** TCP/IP layer model
+*TCP/IP model has only four layers instead of OSI's seven.
+1. Network Access: Physical connections and data framing. Sending ethernet or wifi packets are examples
+2. Internet: Deals with concerns of addressing packets and routing them over multiple interconnection networks
+3. Host-to-Host: Provides two protocols, TCP and UDP, which address concerns such as data order, data segmentation, network congestion, and error correction
+4. Process/Application: HTTP, SMTP, FTP implemented at this layer.
+
+*** Data encapsulation
+When communicating over a network, data must be processed down through the layers at the sender and up through the layers at the receiver.
+
+*** Internet Protocol
+Comes in two version, IPv4 and IPv6
+- IPv4 uses 32-bit addresses
+- IPv6 uses a 128-bit address
+**** What is an address?
+Addresses are 32 bits long, usually encoded into four 8-bit sections. e.g. ~192.168.0.1~
+The *loopback* address is a special address reserved at ~127.0.0.1~. The address is used to "establish a connection to myself". OSes short-circuit this address so that packets to it never enter the network but instead stay local on the originating system.
+
+IPv4 reserves some address ranges for private use. They are:
+- ~10.0.0.0~ to ~10.255.255.255~
+- ~172.16.0.0~ to ~172.31.255.255~
+- ~192.168.0.0~ to ~192.168.255.255~
+
+*Classless Inter-Domain Routing (CIDR)* notation provides a shorthand for writing address ranges. The shorthand for the above ranges in CIDR notation is:
+- ~10.0.0.0/8~
+- ~172.16.0.0/12~
+- ~192.168.0.0/16~
+
+CIDR notation works by specifying the number of bits that are fixed. ~10.0.0.0/8~ specifies the first eight bits of ~10.0.0.0~ addresses are fixed, being the ~10~ part. The remaining parts of the address can be anything and still be on the ~10.0.0.0/8~ block.
+
+IPv6 address are 128 bits long and written as eight groups of four hexadecimal characters delineated by colons.
+- In shortening IPv6 addresses, leading zeros (~0~) can be omitted and consective sections fo zeros can be replaced with a double colon ~::~ (this can only be done once per address or else the shorthand becomes ambiguous.
+- The loopback address for IPv6 is ~::1~, which would be ~0000:0000:0000:0000:0000:0000:0000:0001~
+
+*link-local addresses* are a type of address usable only on the local link. Routers never forward packets from these addresses and they are used for a system to access auto-configuration functions before being assigned an IP address.
+
+*** Domain names
+The Internet Protocol can only route packtes to an IP address. If you attempt to connect to a website by name the system must first resolve the name to the IP address of the server that hosts the website. This is done by connecting to a *Domain Name System (DNS)* server, whose IP address you know of in advance.
+
+To resolve a hostname, your computer sends a UDP message to the domain name server and asks it for an AAAA-type record for the domain you're trying to resolve. If the record exists an IPv6 address is returned and you can connect to the server at that address. If no AAAA record exists, the computer queries the server again asking for an A record. If this record exists an IPv4 address for the server is returned.
+
+It is possible for mulitple records of the same type to exist, each pointing to a different address in the case where multiple servers can provide the same service.
+
+*** Local networks and address translation
+- Many homes and organizations have *Local Area Networks (LANs)* (these LANs are served by the IPv4 address blocks reserved for private use). When a packet originates from an IPv4 device on a local network it must undergo *Network Address Translation (NAT)* before being routed. Routers that implement NAT remember which local address a connection is established from.
+- The translation involves modifying the source IP address from the local address to the public internet IP address. It also involves updating checksums in the packet, otherwise packets would be detected as having errors and discarded by the next router.
+- A router knows whether a message is locally deliverable or if it must be forwarded by using a netmask, subnet mask, or CIDR.
+
+*** Subnetting and CIDR
+IP addresses can be split into parts. The most significant bits are used to identify the network or subnetwork, the least significant bits to identify the specific device on the network.
+
+For IPv4, a router on the ~10.0.0.0~ network with a subnet mask of ~255.255.255.0~ takes an incoming packet and performs a bitwise AND using the packet's destination IP address and the subnet mask to determine if the packet belongs on the subnet or needs to be forwarded
+- Destination IP: ~10.0.0.105~. ~10.0.0.105 & 255.255.255.0~ = ~10.0.0.0~ which matches the subnet of the router, thus the traffic is local
+- Destination IP: ~10.0.15.22~. ~10.0.15.22 & 255.255.255.0~ = ~10.0.15.0~ which does not match the subnet of the router and must be forwarded.
+
+*** Multicast, boradcast, and anycast
+- A packet routed from one sender to one receiver is using *unicast* addressing.
+- *Broadcast* addressing allows a sender to address a packet to all recipients simultaneously. One-to-all communication
+- *Multicast* is one-to-many communication. It involves sending a message to members of a group
+  - Sending one IP level mulitcast conservers bandwidth over sending multiple unicast messages to each recipient.
+- *Anycast* delivers a message to one recipient when you don't care who the recipient is.
+
+*** Port numbers
+IP address gets a packet routed to a specific system, but a port number is used to route the packet to a specific application on the system.
+
+
+A socket is an abstraction representing one end-point of a communication link between systems.
+An open socket is uniquely defined by a 5-tuple consisting of:
+- Local IP address
+- Local port
+- Remote IP address
+- Remote port
+- Protocol (UDP or TCP)
+
+In many cases the Local port is the deciding factor in how an operating systems knows where to route a packet.
+The 5-tuple is also important in NAT as a router's NAT must store the 5-tuple for each connection in order to properly route received packets back into the private network.
+
+** End of chapter questions
+1. The key differences between IPv4 and IPv6 are the number of bits used to identify the address. IPv4 uses 32 bits to identify an address whereas IPv6 uses 128 bits which greatly increases the number of unique addresses in IPv6, so much so that most devices can be assigned a unique address. With IPv4 there is a smaller set of possible addresses that can be used and the number of unique addresses are running out, because of this many devices sit behind routers which perform Network Address Translation to translate requests from devices on a LAN behind the router to requests originating from the publicly addressable IP of the router, and responses from the Internet back to the local area IP address of the device so packets are routed back to the device that initiated the connection.
+2. The address provided by ~ifconfig~ are the IP addresses of the device on the local area network that sits behind the router. These addresses are not the same as the address a remote web server sees. If, however, your machine has a public IP address then the IP addresses returned by the command will match.
+3. IPv4 loopback address is a reserved IP address, usually ~127.0.0.1~, that the machine treats specially. Packets sent to this address are not sent over the network and are kept on the machine
+4. IPv6 loopback address is the same as above, the address is usually ~::1~
+5. Domain names are resolved to IP addresses by querying a domain name server to resolve them to the IP address. Initially the requesting machine sends a UDP message to a DNS server requesting an AAAA-record, if the record is present the IPv6 address of the web server is returned, if it is not present the requesting machine sends another message this time requesting an A-record, which, if present, will return the IPv4 address of the web server.
+6. You can find your public IP address by querying a web server that will return the originating IP address of the request to you. There are some public websites that will do this.
+7. An operating system knows which application is responsible for an incoming packet by using a tuple of values to identify the packet source and destination, including the port. This 5-tuple is part of the socket abstraction and cantains: local host, local port, destination host, destination port, protocol type. Usually the local port is the only differentiating factor for the OS to determine which application to route packets to.

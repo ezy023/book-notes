@@ -1,0 +1,47 @@
+* Chapter 12 - Network Monitoring and Security
+
+*** Ping
+Ping can be used to test network reachability, can this network talk to that network.
+- Ping uses the *Internet Control Message Protocol (ICMP)* to chech host reachability
+  - Ping uses ICMP *echo request* and *echo reply* messages
+
+*** Traceroute
+Reveal the network path a packet takes between two systems
+- traceroute shows the routers used to deliver data to a host
+- Don't assume that two consecutive packets take the same network path
+
+Each *Internet Protocol (IP)* packet contains a header field called *Time to Live (TTL)* which is the max number of seconds a packet should live on a network. In practice, each router that handles a packet decrements the TTL by 1 and the TTL is often used as a hop count, denoting the number of hops a packet has left to take over a network.
+
+*NOTE* To implement tools like ~ping~ and ~traceroute~ you need to use lower level sockets, *raw sockets*, which allow you to construct the exact IP packet to send. May be able to use raw sockets by changing the socket type passed to ~socket()~ to ~SOCK_RAW~ with some APIs.
+
+*** Netstat
+One usages of netstat is to show open connections on the local machine
+
+*** Capturing local network traffic
+*tcpdump* is a unix program that is used to capture packet data coming to and from the local machinez
+
+*** Capturing all network traffic
+One way to capture all network traffic is to use a router that supports mirroring, and mirror all router traffic to a given ethernet port which you then connect your computer to and use ~tcpdump~ to view the traffic as normal
+
+Another way is to install a hub, or network switch with port mirroring, between the modem and the router which mirrors all traffic to all ports, and then connect your system directly to the hub.
+
+Never consider any network traffic to be secret unless it is secured appropriately with encryption.
+
+*** Network Security
+*Firewalls* act as a barrier between networks. They monitor all traffic and decide which traffic to block or allow based on a defined set of rules
+- Two types of firewalls
+  - Software
+  - Hardware
+
+**** Application security
+When programming in C special consideration must be given to security due to the level of access C provides to system resources
+- It is crucial to ensure allocated memory buffers are not written past the end. Must ensure enough memory is allocated to store the data read in from the network
+- When implementing a network protocol, never assume the data you will receive will adhere to the protocol specification
+- C server programs, *defense in depth* approah; set up your program so that an attacker would have to overcome multiple defenses befor they could cause harm
+  - Write program without bugs
+  - Don't run your program with any more privileges than are necessary for its execution
+  - Never run software as root
+- Consider using a reverse proxy server as a intermediary to interface with the internet
+- Consider not writing networked code in C at all. Use other tools and well tested libraries.
+
+*Note* Never port scan a system without permission

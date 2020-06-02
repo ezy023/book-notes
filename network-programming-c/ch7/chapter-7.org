@@ -1,0 +1,14 @@
+* Chapter 7
+
+** HTTP Server
+The internet can be a hostile environment. Production-grade web servers need to include security in layers and be meticulous about file access and resource allocation.
+
+*** Content Types
+It's the HTTP server's job to tell the client the type of the content being sent through use of the ~Content-Type~ header.
+
+If the file's media type is unknown, our server should use ~application/octet-stream~ by default so the browser knows to treat the content as an unknown binary blob
+
+*** Security and robustness
+One of the most important rules when developing networked code is your program should never trust the connected peer.
+
+Run your networked programs under non-privileged accounts that have access to only the minimum resources needed to function.

@@ -1,0 +1,68 @@
+* Chapter 6
+** HTTP Protocol
+HTTP is a text based protocol that runs over TCP
+- Plain HTTP is mostly deprecated in favor of HTTPS
+
+HTTPS secures HTTP by running the HTTP protocol through a *Transport Layer Security (TLS)* layer.
+
+*** HTTP Request Types
+**** GET
+- Most common
+- Used when the client wants to download a resource
+- Consists of HTTP Headers only, no HTTP BODY
+**** HEAD
+- Like GET except the client only wnats information on the resource rather than the resource itself, e.g. the client wants to know the resource size.
+**** POST
+- Used when the client needs to send information to the server.
+- Consists of HTTP Headers and HTTP Body
+**** PUT
+- Used to send a document to the server, for the most part ~POST~ is used instead
+**** DELETE
+- Used to request a server delete a document or resource, ~POST~ is more commonly used instead
+**** TRACE
+- Used to request diagnostic information from web proxies, from proxies that support ~TRACE~ requests
+**** CONNECT
+- Sometimes used to initiate HTTP connection to proxy server.
+**** OPTIONS
+- Used to request which HTTP request types are supported for a resource. Many web servers do not support ~OPTIONS~.
+
+*** HTTP Request Format
+First line of a HTTP request is the *request line* made up of:
+- request type
+- document path
+- protocol version
+
+*NOTE* Each line of a HTTP Request ends with a carriage return, ~\r\n~
+
+The only Header field that is required is the ~Host~ which tells the web server which host the client is requesting a resource from, since a web server may serve for multiple hosts.
+
+The client must send a blank line, ~\r\n\r\n~ after the Headers to inform the server the request is finished
+
+*** HTTP Response Format
+First line of the HTTP response is the *status line*
+- protocol version
+- response code
+- response code description
+
+~Content-Type~ specifies the type of resource the response contains
+~Content-Length~ specifies the size of the HTTP response body in bytes
+
+*** HTTP response codes
+**** 200 range
+Successful requests
+**** 300 range
+The resource has moved. Commonly used to redirect traffic from an unecrypted connection to an encrypted one
+**** 400 and 500 range
+Errors
+
+*** URL
+*Uniform Resource Locators (URL)* provide a way to specify particular web resources
+
+** Questions
+1. HTTP uses TCP
+2. Any type of resource can be sent over HTTP. Images, audio, video, text, binary data etc
+3. Common HTTP request types are GET, POST, HEAD. There are also PUT, TRACE, OPTIONS and CONNECT but they are used less often
+4. HTTP GET
+5. HTTP POST is used to send data from the client to the server
+6. To determine response length you can inspect the ~Content-Length~ header or ~Transfer-Encoding: chunked~
+7. HTTP POST request bodies are encoded depending on the data they are post'ing. Most commonly they use URL encoding for form data

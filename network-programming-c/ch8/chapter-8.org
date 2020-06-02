@@ -1,0 +1,31 @@
+* Chapter 8
+
+** Simple Mail Transfer Protocol (SMTP)
+
+*** Email Servers
+SMTP is the protocol responsible for sending mail between servers. It is a text based protocol running on TCP port 25
+
+- Retrieving email from a mail provider is different than delivering mail between providers. For example browser based email is retrieved and viewed using HTTP, but sent between email servers using SMTP
+- Desktop email clients connect to mail servers using *Internet Message Access Protocol (IMAP)* or *Post Office Protocol (POP)*
+- *Note* SMTP is used to send mail, not retrieve mail from a mail server. IMAP and POP of the common protocols to retrieve mail from a server
+
+*** SMTP security
+Securing SMTP starts with connections in plaintext on port 25. The client then issues a ~STARTTLS~ command to upgrade to a secure and encrypted connection. This connection just runs SMTP commands through a TLS layer.
+
+*** Finding an email server
+Mail servers must be identified by performing a DNS Lookup for an MX record.
+
+
+*** Enhanced emails
+- Can control the content type of an email with the ~Content-Type~ header. If the header is missing a content type of ~text/plain~ is assumed.
+- Can encode an email in multiple formats using a content type of ~multipart/alternative~. For example to send an email in plaintext and html formats since not all email servers support all content types.
+
+*** Email file attachments
+Since SMTP is a text-based protocol any attachments that may include binary data need to be encoded into a text format, e.g. base64.
+
+** Questions
+1. SMTP operates on port 25
+2. Query DNS for MX-type records
+3. It is not possible to determine the server(s) responsible for sending mail
+4. SMTP mail server won't relay without authentication to prevent spam emails
+5. Binary file attachements to email must be text encoded before being sent since SMTP is a text based protocol

@@ -1,0 +1,32 @@
+* Chapter 11 - Establishing SSH Connections
+
+*Secure Shell(SSH)* protocol is a network protocol used to authenticate with remote servers, grant command-line access and securely transfer files.
+
+** SSH protocol
+SSH works over TCP using port 22.
+SSH allows clients to verify server identities using public-key authentication
+SSH also provides client authentication methods including passwords and public-key authentication
+
+Using SSH on a port other than the default 22 is helpful in avoiding automated attacks that try to take over a server.
+
+*** SSH authentication
+Servers are authenticated using public key encryption.
+- Rather than relying on a certificate authority like HTTPS does, most clients keep a list of public keys they trust
+
+The server and client must both authenticate for security
+
+*** Executing a remote command
+SSH protocol works using channels. Once a connection is established a channel must be open to do any real work.
+- Many channels can be opened over one connection
+- Many types of channels
+  - *session* channels are used for executing remote commands and transferring files
+
+*** Transferring Files
+The *Secure Copy Protocol (SCP)* provides a method to tranfer files.
+
+** Questions
+1. A big downside of using Telnet is it is not secure, everything is sent in plain text
+2. SSH typically runs on port 22
+3. It is important for a client to authenticate the SSH server so it knows it is connecting to a server it trusts, otherwise the client could send sensitive information to an impostor
+4. The server is typically authenticated using public-key authentication
+5. There are numerous way for a client to be authentiated, it can also use public-key auth but password based auth is still widely used.

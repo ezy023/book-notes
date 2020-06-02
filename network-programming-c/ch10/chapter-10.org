@@ -1,0 +1,34 @@
+* Chapter 10 - Implementing a Secure Web Server
+
+Generally HTTPS connections are first made using TCP sockets and, once connection is established, OpenSSL is used to negotiate a TLS connection over the open TCP connection. Then OpenSSL functions are used to send and receive data
+
+*** Certificates
+Certificates can be used by both client and server, although HTTPS generally only uses server certificates.
+Certs are used to identify that the client connected to a trusted server.
+
+Certificates work using a *chain-of-trust* model. There are a few trusted authorities that sign certificates. When a client sees a cert signed by a trusted authority it also trusts that certificate.
+
+For public facing HTTPS servers it is important to get a certificate signed by a certificate authority. For testing, development, and private applications you can use self-signed certificates
+Generate a certificate
+#+NAME: self-sign-certificate
+#+BEGIN_SRC sh
+openssl req -x509 -newkey rsa:2048 -nodes -sha256 -keyout key.pem -out cert.pem -days 30
+#+END_SRC
+- ~cert.pem~ is the certificate, this is sent to the client
+- ~key.pem~ is the encryption key used by the server to prove it owns the certificate. It is very important to keep this key secret
+
+View a certificate
+#+NAME: view-certificate
+#+BEGIN_SRC sh
+openssl x509 -text -noout -in cert.pem
+#+END_SRC
+
+*** Alternatives to TLS
+Instead of using TLS directly you could configure a reverse proxy server to accept secure connections from clients and forward the connections as plain HTTP to your program. Nginx and Apache can both be used this way.
+- Reverse proxy server configured this way is also called a *TLS termination proxy*
+
+** Questions
+1. A client can decide whether to trust a server's certificate using the chain-of-trust model, if it the certificate is signed by a trusted certificate authority.
+2. Self-signed certificates are not signed by a certificate authority, thus many browsers will not accept them to authenticate a server.
+3. ~SSL_accept()~ can fail if there is no supported cipher suite between the server and client or if the client does not trust the server's certificate
+4. ~select()~ can be used to multiplex HTTPS connections but there may be some issues in using it with SSL_read as it signals data being available at the TCP layer not the TLS, and the TLS layer sits above TCP so there could be data available at the TCP layer but not yet at the TLS layer.
