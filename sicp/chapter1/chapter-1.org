@@ -1,0 +1,892 @@
+* Chapter 1 - Building Abstractions with Procedures
+- Well designed computational systems are designed in a modular manner so parts can be constructed, replaced, and debugged separately.
+** 1.1 The Elements of Programming
+Three mechanisms for combining simple ideas to form more complex ones
+- *primitive expressions* - represent the simplest entities the language is concerned with
+- *means of combination* - how compound elements are built from simpler ones
+- *means of abstraction* - how compound elements can be named and manipulated as units
+
+In programming we deal with two kinds of elements, procedures and data.
+- *data* is stuff we want to manipulate
+- *procedures are descriptions for manipulating data
+
+In Scheme you can associate a value with a name using ~define~
+#+begin_src scheme
+(define size 2)
+size
+#+end_src
+
+- The interpreter keeps track of name-object pairs in the /environment/.
+
+- To evaluate a combination:
+1. Evaluate the subexpressions of the combination
+2. Apply the procedure that is the value of the leftmost subexpression (the operator) to the arguments that are the values of the other subexpressions (the operands)
+
+-This evaluation rule is /recursive/ in nature, it includes the need to invoke the rule itself in one of its steps
+
+- Exceptions to the general evaluation rule are called /special forms/. ~define~ is a special form since ~(define x 3)~ does not apply ~define~ to the two arguments but rather associates a name, ~x~ with a value, ~3~.
+
+- General form of a procedure definition is
+#+begin_src scheme
+(define (<name> <formal parameters>) <body>)
+#+end_src
+
+- To apply a compound procedure to arguments, evaluate the body of the procedure with each formal parameter replaced by the corresponding argument
+
+*normal-order evaluation*: "fully expand and then reduce" evaluation method.
+*applicative-order evaluation: "evaluate the arguments and then apply". Applicative-order evaluation evaluates the operator and the operands first, and then applies the resulting procedure to the resulting arguments.
+- For all procedures that can be modeled using substitution (i.e. procedures that do not use mutable data) and yield legitimate values, both normal-order and applicative-order evaluation produce the same value.
+
+- Lisp uses applicative-order evaluation because of the effieciency obtained by avoiding multiple evaluations of expressions, and because normal-order evaluation becomes much more complicated to deal with when working with procedures that cannot be modeled with substitution.
+
+- ~cond~ is a Lisp special form for notating /case analysis/
+#+begin_src scheme
+(cond (<p1> <e1>)
+      (<p2> <e2>)
+      (<pn> <en>))
+#+end_src
+- Each parenthesized pair of expression is called a /clause/. The first expression in each pair is the /predicate/ (predicate is a procedure that returns true or false).
+- Evaluation of the clauses continues until a predicate is found that evaluates to true, in which case the value of the corresponding /consequent expression <e>/ is returned as teh value of the conditonal expression.
+- ~else~ is a special symbol that can be used in place of the predicate in the final clause of a ~cond~ which causes ~cond~ to return the corresponding ~<e>~ when all prevoius clauses are false.
+- ~if~ is another special form:
+#+begin_src scheme
+(if <predicate> <consequent> <alternative>)
+#+end_src
+
+**** Exercises
+***** 1.1
+#+begin_src scheme
+10
+;Value: 10
+
+(+ 5 3 4)
+;Value: 12
+
+(- 9 1)
+;Value: 8
+
+(/ 6 2)
+;Value: 3
+
+(+ (* 2 4) (- 4 6))
+;Value: 6
+;Value: 10
+
+(define a 3)
+;Value: a
+
+(define b (+ a 1))
+;Value: b
+
+(+ a b (* a b))
+;Value: 19
+
+(= a b)
+;Value: #f
+
+(if  (and (> b a) (< b (* a b)))
+     b
+     a)
+;Value: 4
+
+(cond ((= a 4) 6)
+      ((= b 4) (+ 6 7 a))
+      (else 25))
+;Value: 16
+
+(+ 2 (if (> b a) b a))
+;Value: 6
+
+(* (cond ((> a b) a)
+         ((< a b) b)
+         (else -1))
+   (+ a 1))
+;Value: 16
+#+end_src
+***** 1.2
+#+begin_src scheme
+(/ (+ 5
+      4
+      (- 2
+         (- 3
+            (+ 6
+               (/ 4 5)))))
+   (* 3
+      (- 6 2)
+      (- 2 7)))
+#+end_src
+***** 1.3
+#+begin_src scheme
+(define (square x) (* x x))
+
+(define (square-largest-two x y z)
+  (cond ((and (> x y) (> z y)) (+ (square x) (square z)))
+        ((and (> y x) (> z x)) (+ (square y) (square z)))
+        (else (+ (square x) (square y)))))
+
+(square-largest-two 1 2 3)
+;Value: 13
+#+end_src
+***** 1.4
+#+begin_src scheme
+  (define (a-plus-abs-b a b)
+    ((if (> b 0) + -) a b))
+#+end_src
+In the above form if b is greater than 0 the procedure ~+~ is returned as a result of the conditional and then applied to the arguments ~a~ and ~b~. If b is less than or equal to 0 the ~-~ form is returned and applied. The ~if~ statements value is one of the two procedures, which are then applied to the arguments. The evaluation of the operator, ~(if (> b 0) + -)~ in this case, is the value of a procedure that is then applied to the operands.
+***** 1.5
+With an interpreter using normal-order evaluation the behavior will be a value of 0 being returned because the interpreter will evaluate the the conditional, resulting in true, and return 0. With an interpreter using applicative-order evaluation the behavior will be an infinite recursion as the procedure ~p~ is substituted for ~y~ in the test, and then infinitely expanded in the evaluation of ~(p)~ in the body of ~p~.
+
+*** Example 1.1.7 Newton Method Square Roots
+You can iteratively determine the square root of a number /x/ by making a guess /y/ and performing a simple manipulation of averaging /y/ with /x/y/
+#+begin_src scheme
+(define (square x)
+  (* x x))
+
+(define (average x y)
+  (/ (+ x y) 2))
+
+(define (improve guess x)
+  (average guess (/ x guess)))
+
+(define (good-enough? guess x)
+  (< (abs (- (square guess) x)) 0.001))
+
+(define (sqrt-iter guess x)
+  (if (good-enough? guess x)
+      guess
+      (sqrt-iter (improve guess x) x)))
+#+end_src
+**** Exercises
+***** 1.6
+      Attempting to use the ~new-if~ (which uses a ~cond~ statement) in the ~sqrt-iter~ implementation results in the program exceeding its max recursion depth. The reason this occurs is because ~new-if~ is a normal procedure subject to applicative order evauluation which causes its subexpressions to be evaluated resulting in an infinite recursion in the ~sqrt-iter~ procedure of the else clause. By re-writing, ~new-if~ is a normal procedure and loses the special form properties of ~if~, all of the ~new-if~ args are evaluated under applicative order evaluation where the special form ~if~ has only one of the arguments evaluated.
+***** 1.7
+The ~good-enough?~ check above will not be suitable for small numbers because the the averaging of very small numbers could quickly result in a value that would satisfy that check but would not be a good approximation of the square root. An example of this would be approximating the square root of ~0.0001~. With the above methods the square root approximates to ~.04124542607499115~ when the answer should be ~0.01~:
+#+begin_src scheme
+(sqrt-iter 1.0 0.001)
+;Value: .04124542607499115
+(* 0.01 0.01)
+;Value: .0001
+#+end_src
+
+For larger numbers arithmetic calculations would not be accurate due to the computer space required to hold the number's value and the limited precision afforded to calculations on large numbers. For larger numbers it is unlikely, with the limited precision for the ~good-enough?~ procedure to ever succeed because the needed precision to determine a difference of ~0.0001~ is unlikely to be possible.
+
+Using a check in ~good-enough?~ that looks at how the guess changes between iterations and stopping when the change is a small fraction of the guess is a better approach because you will be checking the difference between two guesses as a percentage of the guess, rather than seeing how close the square of the guess comes to the number you are seeking the square root of, which itself may fall victim to the arithmetic precision issues noted above.
+
+#+begin_src scheme
+(define (good-enough? guess x)
+  (< (/ (abs (- guess (improve guess x)))
+        guess)
+     0.00001))
+#+end_src
+***** 1.8
+An approximation of cube roots using the transform ((x/y^2) + 2y)/3
+#+begin_src scheme
+(define (cube-improve guess x)
+  (/ (+ (/ x (square guess))
+        (* 2 guess))
+     3))
+
+(define (cube-good-enough? guess x)
+  (< (/ (abs (- guess (cube-improve guess x)))
+        guess)
+     0.00001))
+
+(define (cube-rt guess x)
+  (if (cube-good-enough? guess x)
+      guess
+      (cube-rt (cube-improve guess x) x)))
+
+(cube-rt 1.0 27)
+(cube-rt 1.0 125)
+(cube-rt 1.0 (* 12 12 12))
+#+end_src
+*** 1.1.8 Procedures as Black Box Abstractions
+/Procedural abstraction/ allows you to use a procedure but consider the details on how it is implemented at a later time.
+
+** 1.2 Procedures and the Processes they Generate
+*** 1.2.1 Linear Recursion and Iteration
+- A /recursive process/ is characterized by a chain of deferred operations.
+  - There is a distinction from a /recursive procedure/ in that when describing a procedure as recursive we are referring to the fact the syntax of the procedure refers to itself (directly or indirectly), whereas when describing a process as recursvie we are talking about about the process evolves.
+- An /iterative process/ is one whose state can be summarized by a fixed number of /state variables/, together with a fixed rule that describes how the state variables should be updated as the process moves from state to state and an end test that specifies the conditions under which the process should terminate.
+- /tail-recursive/ is a property of a recursive procedure in which it executes in constant space.
+**** Exercises
+***** 1.9
+#+begin_src scheme
+;; Implementation One
+(define (+ a b)
+  (if (= a 0)
+      b
+      (inc (+ (dec a) b))))
+
+(+ 4 5)
+(inc (+ 3 5))
+(inc (inc (+ 2 5)))
+(inc (inc (inc (+ 1 5))))
+(inc (inc (inc (inc (+ 0 5)))))
+(inc (inc (inc (inc 5))))
+(inc (inc (inc 6)))
+(inc (inc 7))
+(inc 8)
+9
+
+
+;; Implementation Two
+(define (+ a b)
+  (if (= a 0)
+      b
+      (+ (dec a) (inc b))))
+
+(+ 4 5)
+(+ 3 6)
+(+ 2 7)
+(+ 1 8)
+(+ 0 9)
+#+end_src
+The first implementation above is a recursive process in that it expands and then contracts to perform the calculation. The second implementation above is an iterative process because the calculation is managed by the two state variables /a/ and /b/ and the rule of decrementing /a/ and incrementing /b/ to change between states.
+***** 1.10
+...Skipping... (question ask to provide mathematical definitions for the following function ~A~)
+#+begin_src scheme
+(define (A x y)
+  (cond ((= y 0) 0)
+        ((= x 0) (* 2 y))
+        ((= y 1) 2)
+        (else (A (- x 1)
+                 (A x (- y 1))))))
+
+(A 1 10)
+(A 2 4)
+(A 3 3)
+#+end_src
+
+*** 1.2.2 Tree Recursion
+Tree recursion is a natural and powerful tool when operating on hierarchically structured data, but even in numerical operations (such as fibonacci sequences) can be useful in helping understand and design programs
+**** Exercises
+***** Ex 1.11
+#+begin_src scheme
+; Recursive
+(define (f n)
+  (if (< n 3)
+      n
+      (+ (f (- n 1))
+         (* 2 (f (- n 2)))
+         (* 3 (f (- n 3))))))
+
+; Iterative
+;; State transformation rule
+;;; a <- a + 2b + 3c
+;;; b <- a
+;;; c <- b
+(define (fi n)
+  (define (f-iter a b c count)
+    (cond ((< n 3) n)
+          ((<= count 0) a)
+          (else (f-iter (+ a (* 2 b) (* 3 c))
+                        a
+                        b
+                        (- count 1)))))
+  (f-iter 2 1 0 (- n 2)))
+#+end_src
+***** Ex 1.12
+#+begin_src
+(define (pascal row col)
+  (cond ((or (= col 1) (= col row))
+         1)
+        (else (+ (pascal (- row 1) col)
+                 (pascal (- row 1) (- col 1))))))
+#+end_src
+***** Ex 1.13
+...Skipping... mathematical proof
+*** 1.2.3 Orders of Growth
+- Orders of Growth provide only a crude description of the behavior of a process.
+**** Exercises
+***** 1.14
+Space grows linearly as at any point in the tree we only need to keep track of the nodes above the current node, and since the height of the tree is proportional to the amount to be changed, as the amount increases so too does the space in a linear way. As the amount to be changed increases the number of steps increases at an exponential rate of n^5 because for each amount increase we have to calculated the change tree for all 5 types of coins.
+
+Answer reference [[https://billthelizard.blogspot.com/2009/12/sicp-exercise-114-counting-change.html][here]].
+***** 1.15
+The order of growth for the function is logarithmic because of the angle division by 3.0. As the angle increases in value the number of division steps required increases at a slower rate. The number of times p is applied is once for each complete power of 3 contained in the angle.
+
+Answer reference [[http://community.schemewiki.org/?sicp-ex-1.15][here]]
+*** 1.2.4 Exponentiation
+**** Exercises
+***** 1.16
+#+begin_src scheme
+(define (square x) (* x x))
+(define (even? n)
+  (= (remainder n 2) 0))
+(define (fast-expt-iter base exp)
+  (define (expt-iter b n acc)
+    (cond ((= n 0) acc)
+          ((even? n) (expt-iter b (/ n 2) (* acc (square b))))
+          (else (expt-iter b (- n 1) (* acc b)))))
+  (expt-iter base exp 1))
+#+end_src
+***** 1.17
+#+begin_src scheme
+(define (even? n)
+  (= (remainder n 2) 0))
+(define (double x) (+ x x))
+(define (halve x) (/ x 2))
+(define (fast-mult a b)
+  (cond ((= b 0) 0)
+        ((= b 1) a)
+        ((even? b) (fast-mult (double a) (halve b)))
+        (else (+ a (fast-mult a (- b 1))))))
+#+end_src
+***** 1.18
+#+begin_src scheme
+(define (fast-mult-iter x y)
+  (define (mult-iter a b acc)
+    (cond ((= b 0) acc)
+          ((even? b) (mult-iter (double a) (halve b) acc))
+          (else (mult-iter a (- b 1) (+ acc a)))))
+  (mult-iter x y 0))
+#+end_src
+***** 1.19
+Skipped
+*** 1.2.5 Greatest Common Divisors
+- The Greatest Common Divisor (GCD) of two integers is the largest integer that divides both with no remainder.
+- /Euclid's Algorithm/ for computing GCD of two numbers.
+   - If /r/ is the remainder when /a/ is divided by /b/ then the common divisors of /a/ and /b/ are the same as the common divisors of /b/ and /r/.
+   - GCD(a,b) = GCD(b, r)
+   - As a procedure
+#+begin_src scheme
+(define (gcd a b)
+  (if (= b 0)
+      a
+      (gcd b (remainder a b))))
+#+end_src
+**** Exercises
+***** 1.20
+...Skipped...
+*** 1.2.6 Example: Testing for Primality
+- Finding divisors
+#+begin_src scheme
+(define (smallest-divisor n)
+  (find-divisor n 2))
+
+(define (find-divisor n test-divisor)
+  (cond ((> (square test-divisor) n) n)
+        ((divides? test-divisor n) test-divisor)
+        (else (find-divisor n (+ test-divisor 1)))))
+
+(define (divides? a b)
+  (= (remainder b a) 0))
+#+end_src
+- *Fermat's Little Theorem*: If /n/ is a prime number and /a/ is any positive integer less than /n/, then /a/ raised to the /nth/ power is congruent to /a/ modulo /n/
+  - Two numbers are /congruent modulo n/ if they both have the same remainder when divided by /n/
+**** Exercises
+***** 1.21
+#+begin_src scheme
+(smallest-divisor 199)
+; 199
+(smallest-divisor 1999)
+; 1999
+(smallest-divisor 19999)
+; 7
+#+end_src
+***** 1.22
+#+begin_src scheme
+(define (timed-prime-test n)
+  (newline)
+  (display n)
+  (start-prime-test n (runtime)))
+
+(define (start-prime-test n start-time)
+  (if (prime? n)
+      (report-prime (- (runtime) start-time))))
+
+(define (report-prime elapsed-time)
+  (display " *** ")
+  (display elapsed-time))
+
+(define (expmod base exp m)
+  (cond ((= exp 0) 1)
+        ((even? exp)
+         (remainder (square (expmod base (/ exp 2) m))
+                    m))
+        (else
+         (remainder (* base (expmod base (- exp 1) m))
+                    m))))
+
+(define (fermat-test n)
+  (define (try-it a)
+    (= (expmod a n n) a))
+  (try-it (+ 1 (random (- n 1)))))
+
+(define (fast-prime? n times)
+  (cond ((= times 0) true)
+        ((fermat-test n) (fast-prime? n (- times 1)))
+        (else false)))
+
+(define (prime? n)
+  (fast-prime? n 5))
+
+(define (search-for-primes n count)
+  (cond ((= count 3) (newline) (display "DONE"))
+        ((even? n) (search-for-primes (+ n 1) count))
+        ((prime? n)
+         (search-for-primes (+ n 1) (+ count 1)))
+        (else (search-for-primes (+ n 1) count))))
+#+end_src
+*Note* I was unable to get the timing aspect of the prime calculations to work here. ~(runtime)~ reported the same time consistently
+***** 1.23
+#+begin_src scheme
+(define (smallest-divisor n)
+  (find-divisor n 2))
+
+(define (next divisor)
+  (if (= divisor 2)
+      3
+      (+ divisor 2)))
+
+(define (find-divisor n test-divisor)
+  (cond ((> (square test-divisor) n) n)
+        ((divides? test-divisor n) test-divisor)
+        (else (find-divisor n (next test-divisor)))))
+#+end_src
+***** 1.24
+#+begin_src scheme
+(define (timed-prime-test n)
+  (start-prime-test n (runtime)))
+
+(define (start-prime-test n start-time)
+  (if (fast-prime? n 10)
+      (report-prime (- (runtime) start-time))))
+
+(define (report-prime elapsed-time)
+  (display " *** ")
+  (display elapsed-time))
+
+(define (expmod base exp m)
+  (cond ((= exp 0) 1)
+        ((even? exp)
+         (remainder (square (expmod base (/ exp 2) m))
+                    m))
+        (else
+         (remainder (* base (expmod base (- exp 1) m))
+                    m))))
+
+(define (fermat-test n)
+  (define (try-it a)
+    (= (expmod a n n) a))
+  (try-it (+ 1 (random (- n 1)))))
+
+(define (fast-prime? n times)
+  (cond ((= times 0) true)
+        ((fermat-test n) (fast-prime? n (- times 1)))
+        (else false)))
+#+end_src
+I would expect the time to test primes for higher numbers to increase logarithmically plus a small constant time resulting from the increased processing necessary to do arithmetic (division and modulo) with larger numbers.
+***** 1.25
+With the replacement with ~fast-expt~ the processing time would become longer because the ~fast-exp~ procedure would calculate the full squares of numbers, resulting in much larger numbers, whereas the calculations in the original ~expmod~ are kept smaller, within the bounds of the modulo number, by the ~remainder~ operation.
+
+Answer reference [[http://community.schemewiki.org/?sicp-ex-1.25][here]]
+***** 1.26
+The reason the explicit multiplication results in the processes becoming O(n) instead of O(log n) is because, in applicative-order evaluation, the arguments are evaluated and then the operator applied, thus, the computation of ~expmod~ is now happening twice as many times when the number is even, resulting in more operations being executed to compute the answer. Whereas in the original function the square operation was applied to the resulting number from a single ~expmod~ call.
+
+The addition of the explicit multiplication transforms the functions from a linearly recursive function to a tree recursive function and with a tree recursive function the execution time grows exponentially with the depth of the tree.
+***** 1.27
+#+begin_src scheme
+(define (fast-expt b n)
+  (cond ((= n 0) 1)
+        ((even? n) (square (fast-expt b (/ n 2))))
+        (else (* b (fast-expt b (- n 1))))))
+
+(define (congruent-check n)
+  (define (check-num a)
+    (display a)
+    (newline)
+    (cond ((>= a n) #t)
+          ((= (remainder (fast-expt a n) n) (remainder a n))
+           (check-num (+ a 1)))
+          (else #f)))
+  (check-num 1))
+
+(congruent-check 561)
+(congruent-check 1105)
+(congruent-check 1729)
+(congruent-check 2465)
+(congruent-check 2821)
+(congruent-check 6601)
+(congruent-check 100)
+#+end_src
+***** 1.28
+Skipped
+** 1.3 Formulated Abstractions with Higher-Order Procedures
+*Higher order procedures* are procedures that can accept procedures as arguments and manipulate them.
+- The presence of a common pattern is evidence of a useful abstraction waiting to be brought to the surface
+*** Procedures as Arguments
+Example, a ~sum~ function that can be applied to various summations by accepting a ~term~ argument to determine the value of the term to be summed, and a ~next~ argument to calculate the next value in the sum sequence
+#+begin_src scheme
+(define (sum term a next b)
+  (if (> a b)
+      0
+      (+ (term a)
+         (sum term (next a) next b))))
+#+end_src
+**** Exercises
+***** 1.29
+#+begin_src scheme
+(define (cube x)
+  (* x x x))
+
+(define (simpson-integral f a b n)
+  (define h (/ (- b a) n))
+  (define (y k) (+ a (* k h)))
+  (define (coef k)
+    (cond ((or (= k 0) (= k n)) 1)
+          ((even? k) 2)
+          (else 4)))
+  (define (term k)
+    (* (coef k) (f (y k))))
+  (define (next k) (+ k 1))
+  (* (/ h 3) (sum term 0 next n)))
+
+(simpson-integral cube 0.0 1.0 100)
+(simpson-integral cube 0.0 1.0 1000)
+#+end_src
+***** 1.30
+#+begin_src scheme
+(define (sum-iter term a next b)
+  (define (iter a result)
+    (if (> a b)
+        result
+        (iter (next a) (+ (term a) result))))
+  (iter a 0))
+#+end_src
+***** 1.31
+a.
+#+begin_src scheme
+(define (product term a next b)
+  (if (> a b)
+      1
+      (* (term a)
+         (product term (next a) next b))))
+
+(define (pi-prod)
+  (define (term n)
+    (if (even? n)
+        (/ (+ n 2) (+ n 1))
+        (/ (+ n 1) (+ n 2))))
+  (define (next n) (+ n 1))
+  (* 4 (product term 1.0 next 1000)))
+#+end_src
+b.
+#+begin_src scheme
+(define (product-iter term a next b)
+  (define (iter a result)
+    (if (> a b)
+        result
+        (iter (next a) (* (term a) result))))
+  (iter a 1))
+
+(define (pi-prod-iter)
+  (define (term n)
+    (if (even? n)
+        (/ (+ n 2) (+ n 1))
+        (/ (+ n 1) (+ n 2))))
+  (define (next n) (+ n 1))
+  (* 4 (product-iter term 1.0 next 1000)))
+#+end_src
+***** 1.32
+a.
+#+begin_src scheme
+(define (accumulate combiner null-value term a next b)
+  (if (> a b)
+      null-value
+      (combiner (term a)
+                (accumulate combiner null-value term (next a) next b))))
+
+(define (identity x) x)
+(define (inc x) (+ x 1))
+
+(define (sum-acc a b)
+  (accumulate + 0 identity a inc b))
+
+(sum-acc 1 5)
+;; 15
+
+(define (prod-acc a b)
+  (accumulate * 1 identity a inc b))
+
+(prod-acc 1 5)
+;; 120
+#+end_src
+b.
+#+begin_src scheme
+(define (accumulate combiner null-value term a next b)
+  (define (acc-iter a result)
+    (if (> a b)
+        result
+        (acc-iter (next a) (combiner (term a) result))))
+  (acc-iter a null-value))
+#+end_src
+***** 1.33
+#+begin_src scheme
+(define (filtered-accumulate combiner null-value term a next b predicate?)
+  (cond ((> a b) null-value)
+        ((predicate? a)
+         (combiner (term a)
+                   (filtered-accumulate combiner null-value term (next a) next b predicate?)))
+        (else (filtered-accumulate combiner null-value term (next a) next b predicate?))))
+#+end_src
+a.
+#+begin_src scheme
+(define (sum-prime-squares a b)
+  (filtered-accumulate + 0 square a inc b prime?))
+(sum-prime-squares 2 5)
+; Value 38
+#+end_src
+b.
+#+begin_src scheme
+(define (product-relative-primes n)
+  (define (filter i)
+    (relatively-prime? i n))
+  (filtered-accumulate * 1 identity 1 inc n filter))
+(product-relative-primes 10)
+; Value 189
+#+end_src
+*** 1.3.2 Constructing Procedures Using ~lambda~
+- The special form ~lambda~ creates procedures
+#+begin_src scheme
+(lambda (<formal parameters>) <body>)
+#+end_src
+- The special form ~let~ is used to bind local varaibles in a procedure
+#+begin_src scheme
+(let ((<var1> <exp1>)
+      (<var2> <exp2>)
+      (<varN> <expN>))
+  <body>)
+#+end_src
+**** Exercises
+***** 1.34
+For the procedure
+#+begin_src scheme
+(define (f g)
+  (g 2))
+#+end_src
+if we ask the interpreter to evaluate ~(f f)~ we will receive an error around attempting to use a primitive numerical value, ~2~, as a callable procedure. This is because the process will result in a final procedure call of ~(2 2)~, following the below evolution:
+#+begin_src scheme
+(f f)
+(f (f 2))
+(f (f (2 2)))
+#+end_src
+*** 1.3.3 Procedures as General Methods
+- Finding fixed points of functions
+#+begin_src scheme
+(define tolerance 0.0001)
+
+(define (fixed-point f first-guess)
+  (define (close-enough? v1 v2)
+    (< (abs (- v1 v2)) tolerance))
+  (define (try guess)
+    (let ((next (f guess)))
+      (if (close-enough? guess next)
+          next
+          (try next))))
+  (try first-guess))
+#+end_src
+- *average damping* is the approach of averaging successive approximations to a solution. Often it aids ihn the convergence of fixed point searches
+**** Exercises
+***** 1.35
+Skipped
+***** 1.36
+#+begin_src scheme
+(define (fixed-point f first-guess)
+  (define (close-enough? v1 v2)
+    (< (abs (- v1 v2)) tolerance))
+  (define (try guess)
+    (display guess)
+    (newline)
+    (let ((next (f guess)))
+      (if (close-enough? guess next)
+          next
+          (try next))))
+  (try first-guess))
+
+(fixed-point (lambda (x) (/ (log 1000) (log x)))
+             2)
+;Value: 4.555563237292884
+;; 29 steps
+
+(define (average x y)
+  (/ (+ x y) 2))
+(fixed-point (lambda (x) (average x (/ (log 1000) (log x))))
+             2)
+;Value: 4.5555465521473675
+;; 8 steps
+#+end_src
+***** 1.37
+a.
+#+begin_src scheme
+(define (cont-frac n d k)
+  (define (frac i)
+    (if (< i k)
+        (/ (n i) (+ (d i) (frac (+ i 1))))
+        (/ (n i) (d i))))
+  (frac 1))
+
+(/ 1
+   (cont-frac (lambda (x) 1.0)
+            (lambda (x) 1.0)
+            15))
+;Value: 1.6180327868852458
+#+end_src
+To get an answer accurate to 4 decimal places the minimum k value <= 15.
+b.
+#+begin_src scheme
+(define (cont-frac-iter n d k)
+  (define (iter result i)
+    (if (= i 0)
+        result
+        (iter (/ (n i) (+ (d i) result))
+                       (- i 1))))
+  (iter (/ (n k) (d k)) (- k 1)))
+
+(/ 1
+   (cont-frac-iter (lambda (x) 1.0)
+                   (lambda (x) 1.0)
+                   15))
+;Value: 1.6180339985218037
+#+end_src
+*Note* Lots of help from https://billthelizard.blogspot.com/2010/07/sicp-137-138-and-139-continued.html for 1.37 and 1.38
+***** 1.38
+#+begin_src scheme
+(define (calc-e)
+  (+ 2
+     (cont-frac-iter (lambda (x) 1.0)
+                (lambda (x)
+                  (if (not (= 0 (remainder (+ x 1) 3)))
+                      1
+                      (* 2 (/ (+ x 1) 3))))
+                20)))
+
+(calc-e)
+;Value: 2.718281828459045
+#+end_src
+***** 1.39
+#+begin_src scheme
+(define (square x) (* x x))
+(define (tan-cf x k)
+  (cont-frac (lambda (i)
+               (if (= i 1)
+                   x
+                   (- (square x))))
+             (lambda (i)
+               (- (* i 2) 1))
+             k))
+
+(tan-cf 10.0 40)
+;Value: .6483608274590866
+(tan 10) ;; built-in tan procedure
+;Value: .6483608274590866
+#+end_src
+*** 1.3.4 Procedures as Returned Values
+~average-damp~ is a procedure that returns a procedure that finds the average of a number ~x~ and ~(f x)~ when applied to a number.
+#+BEGIN_SRC scheme
+(define (average-damp f)
+  (lambda (x) (average x (f x))))
+#+END_SRC
+- "Experienced programmers know how to choose procedural formulations that are particularly perspicuous (/perspicuous/ - clear to the understanding; capable of being easily understood;) and where useful elements of the process are exposed as separate entities that can be reused in other applications."
+- Derivative is something that transforms a function into another function.
+#+BEGIN_SRC scheme
+(define dx 0.00001)
+(define (deriv g)
+  (lambda (x)
+    (/ (- (g (+ x dx)) (g x))
+       dx)))
+#+END_SRC
+- "As programmers, we should be alert to opportunities to identify the underlying abstractions in our prgrams and to build upon them and generalize them to create more powerful abstractions."
+- "Expert programmers know how to choose the level of abstraction appropriate to their task."
+**** Exercises
+***** 1.40
+#+BEGIN_SRC scheme
+(newtons-method (cubic 4 -8 7) 1)
+
+(define (cubic a b c)
+  (lambda (x)
+    (+ (cube x)
+       (* a (square x))
+       (* b x)
+       c)))
+;Value: -5.638871145892399
+#+END_SRC
+***** 1.41
+#+BEGIN_SRC scheme
+(define (inc x) (+ x 1))
+
+(define (double g)
+  (lambda (x) (g (g x))))
+
+((double inc) 1)
+; 3
+(((double (double double)) inc) 5)
+; 21
+#+END_SRC
+***** 1.42
+#+BEGIN_SRC scheme
+(define (compose f g)
+  (lambda (x) (f (g x))))
+
+((compose square inc) 6)
+; 49
+#+END_SRC
+***** 1.43
+#+BEGIN_SRC scheme
+(define (repeated f n)
+  (if (= n 1)
+      f
+      (compose f (repeated f (- n 1)))))
+
+((repeated square 2) 5)
+; 625
+#+END_SRC
+***** 1.44
+#+BEGIN_SRC scheme
+(define dx 0.00001)
+(define (average3 a b c)
+  (/ (+ a b c) 3))
+(define (smooth f)
+  (lambda (x)
+    (average3 (f (- x dx))
+              (f x)
+              (f (+ x dx)))))
+
+(define (n-fold-smooth f n)
+  (repeated (smooth f) n))
+#+END_SRC
+Help from https://billthelizard.blogspot.com/2010/08/sicp-144-smoothing-function.html
+***** 1.45
+Skipped
+***** 1.46
+#+BEGIN_SRC scheme
+(define (iterative-improve good-enough? improve)
+  (define (iter-imp guess)
+    (if (good-enough? guess)
+        guess
+        (iter-imp (improve guess))))
+  iter-imp)
+
+
+(define (sqrt-ii x)
+  (define (good-enough? guess)
+    (< (abs (- (square guess) x)) 0.0001))
+  (define (improve guess)
+    (/ (+ guess (/ x guess)) 2))
+  ((iterative-improve good-enough? improve) 1.0))
+
+(sqrt-ii 16)
+;Value: 4.000000636692939
+
+(define (fixed-point-ii f first-guess)
+  (define (good-enough? guess)
+    (< (abs (- guess (f guess))) 0.0001))
+  (define (improve guess)
+    (f guess))
+  ((iterative-improve good-enough? improve) first-guess))
+
+(fixed-point-ii (lambda (x) (/ (log 1000) (log x)))
+                2)
+;Value: 4.555493957531389
+#+END_SRC
