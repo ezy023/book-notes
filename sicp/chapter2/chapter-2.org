@@ -229,3 +229,523 @@ Skipped
 ***** 2.16
 Skipped
 ** 2.2 Hierarchical Data and the Closure Property
+- The /closure property/ is satisfied when the results of an operation combining objects can themselves be combined using the same operation.
+  - ~cons~ satisfies this, the results of ~cons~-ing two objects can themselves be ~cons~-ed into another object
+  - Closure is important because it allows us to create /hierarchical/ structures -- structures made up of parts (turtles all the way down)
+*** 2.2.1 Representing Sequences
+- A /sequence/ is an ordered collection of data objects
+  - A sequence of pairs formed by nested ~cons~es is called a /list/. And the Scheme primitive ~list~ constructs them.
+#+BEGIN_SRC scheme
+(list <a1> <a2> ... <aN>)
+; equivalent to nested cons
+(cons <a1> (cons <a2 (cons ... (cons <aN> nil) ... )))
+#+END_SRC
+**** Exercises
+***** 2.17
+#+BEGIN_SRC scheme
+(define (last-pair l)
+  (if (null? (cdr l))
+      l
+      (last-pair (cdr l))))
+#+END_SRC
+***** 2.18
+#+BEGIN_SRC scheme
+(define (reverse l)
+  (if (null? l)
+      l
+      (append (reverse (cdr l)) (list (car l)))))
+#+END_SRC
+***** 2.19
+#+BEGIN_SRC scheme
+(define (cc amount coin-values)
+  (cond ((= amount 0) 1)
+        ((or (< amount 0) (no-more? coin-values)) 0)
+        (else
+         (+ (cc amount
+                (except-first-denomination coin-values))
+            (cc (- amount
+                   (first-denomination coin-values))
+                coin-values)))))
+
+(define first-denomination car)
+(define except-first-denomination cdr)
+(define no-more? null?)
+
+(define us-coins (list 50 25 10 5 1))
+(define uk-coins (list 100 50 20 10 5 2 1 0.5))
+
+(cc 100 us-coins)
+#+END_SRC
+***** 2.20
+#+BEGIN_SRC scheme
+(define (same-parity i . j)
+  (define (iter-list l)
+    (cond ((null? l) l)
+          ((= (remainder i 2) (remainder (car l) 2))
+           (cons (car l) (iter-list (cdr l))))
+          (else (iter-list (cdr l)))))
+  (iter-list j))
+
+(same-parity 1 2 3 4 5 6 7 8 9 10)
+(same-parity 2 3 4 5 6 7 8 9 10 11)
+#+END_SRC
+*** Mapping over lists
+- ~map~ defined as a higher-order procedure (Scheme comes with a more general ~map~ procedure built-in)
+#+BEGIN_SRC scheme
+(define (map proc items)
+  (if (null? items)
+      items
+      (cons (proc (car items))
+            (map proc (cdr items)))))
+#+END_SRC
+- ~map~ helps establish an abstraction barrier that isolates the implementation of procedures that transform lists from the details of how the elements of the list are extracted and combined.
+**** Exercises
+***** 2.21
+#+BEGIN_SRC scheme
+(define (square x) (* x x))
+(define nil ())
+(define (square-list-one items)
+  (if (null? items)
+      nil
+      (cons (square (car items))
+            (square-list (cdr items)))))
+
+(define (square-list-two items)
+  (map square items))
+
+(square-list-one (list 1 2 3 4))
+(square-list-two (list 1 2 3 4))
+#+END_SRC
+***** 2.22
+The reason both procedures are producing lists in reverse order is because they each first iterate to the null case of the ~things~ list before starting to build up their answer list. To fix the problem you would need to swap the order of the arguments passed to ~iter~ so that ~answer~ is passed first and ~cons~-ed to the list with the result of iteration on the rest of ~things~. With this structure the list would be cons'd as the process iterates.
+***** 2.23
+#+BEGIN_SRC scheme
+(define (my-for-each proc items)
+  (cond ((null? items) #t)
+        (else
+         (proc (car items))
+         (my-for-each proc (cdr items)))))
+
+(my-for-each (lambda (x) (newline) (display x))
+             (list 57 321 88))
+#+END_SRC
+*** 2.2.2 Hierarchical Structures
+- Another way to thihnik of sequences whose elements are sequehnces is as /trees/. The elements of the sequence are branches of the tree, and elements that are themselves sequences are subtrees.
+**** Exercises
+***** 2.24
+Skipped
+***** 2.25
+#+BEGIN_SRC scheme
+(car (cdr (car (cdr (cdr '(1 3 (5 7) 9))))))
+(car (car '((7))))
+(car (cdr (car (cdr (car (cdr (car (cdr (car (cdr (car (cdr
+                                                    '(1 (2 (3 (4 (5 (6 7))))))
+                                                    ))))))))))))
+#+END_SRC
+***** 2.26
+#+BEGIN_SRC scheme
+(define x (list 1 2 3))
+(define y (list 4 5 6))
+
+(append x y)
+; (1 2 3 4 5 6)
+(cons x y)
+; ((1 2 3) 4 5 6)
+(list x y)
+; ((1 2 3) (4 5 6))
+#+END_SRC
+***** 2.27
+#+BEGIN_SRC scheme
+(define (deep-reverse items)
+  (cond ((null? items) items)
+        ((pair? (car items))
+         (append (deep-reverse (cdr items)) (list (deep-reverse (car items)))))
+        (else
+         (append (deep-reverse (cdr items)) (list (car items))))))
+
+(define x (list (list 1 2) (list 3 4)))
+
+(deep-reverse x)
+(deep-reverse '( 1 2 3 4 5))
+#+END_SRC
+***** 2.28
+#+BEGIN_SRC scheme
+(define (fringe items)
+  (cond ((null? items) items)
+        ((pair? items)
+         (append (fringe (car items)) (fringe (cdr items))))
+        (else (list items))))
+
+(define x (list (list 1 2) (list 3 4)))
+(fringe x)
+(fringe (list x x))
+#+END_SRC
+Given
+#+BEGIN_SRC scheme
+(define (make-mobile left right)
+  (list left right))
+; structure is either a number (for a weight) or another mobile
+(define (make-branch length structure)
+  (list length structure))
+#+END_SRC
+a.
+#+BEGIN_SRC scheme
+(define (left-branch mobile)
+  (car mobile))
+(define (right-branch mobile)
+  (car (cdr mobile)))
+
+(define m (make-mobile 1 2))
+(left-branch m)
+(right-branch m)
+#+END_SRC
+b.
+#+BEGIN_SRC scheme
+(define (branch-length branch)
+  (car branch))
+(define (branch-structure branch)
+  (car (cdr branch)))
+(define (total-weight structure)
+  (cond ((not (pair? structure))
+         structure)
+        (else (+ (total-weight (branch-structure (left-branch structure)))
+                 (total-weight (branch-structure (right-branch structure)))))))
+
+(define m (make-mobile (make-branch 1 2)
+                       (make-branch 3 4)))
+(define large-m (make-mobile (make-branch 1 m)
+                             (make-branch 2 m)))
+(define larger-m (make-mobile (make-branch 1 m)
+                              (make-branch 2 large-m)))
+(total-weight m)
+(total-weight large-m)
+(total-weight larger-m)
+#+END_SRC
+c.
+#+BEGIN_SRC scheme
+(define (branch-torque branch)
+  (* (branch-length branch)
+     (total-weight (branch-structure branch))))
+(define (balanced? structure)
+  (cond ((not (pair? structure))
+         #t)
+        ((= (branch-torque (left-branch structure)) (branch-torque (right-branch structure)))
+         (and (balanced? (branch-structure (left-branch structure)))
+              (balanced? (branch-structure (right-branch structure)))))
+        (else
+         #f)))
+
+(define b (make-mobile (make-branch 3 4)
+                        (make-branch 2 6)))
+(define db (make-mobile (make-branch 3 b)
+                        (make-branch 2 b)))
+(balanced? b)
+(balanced? db)
+#+END_SRC
+d.
+If we change the representation of mobiles to use ~cons~ instead of using ~list~ the programs will need to change the selectors of the branch and mobile structures to remove an extra ~car~ call that is necessary to extract the last value from a list structure. Other than that the program should be able to function without modification to other procedures.
+***** 2.30
+#+BEGIN_SRC scheme
+(define (square-tree tree)
+  (cond ((null? tree) tree)
+        ((not (pair? tree)) (square tree))
+        (else (cons (square-tree (car tree))
+                    (square-tree (cdr tree))))))
+
+(define (square-tree tree)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (square-tree sub-tree)
+             (square sub-tree)))
+       tree))
+
+(define t (list 1
+                (list 2 (list 3 4) 5)
+                (list 6 7)))
+(square-tree t)
+#+END_SRC
+***** 2.31
+#+BEGIN_SRC scheme
+(define (tree-map tree transform)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (tree-map sub-tree transform)
+             (transform sub-tree)))
+       tree))
+
+(define (square-tree tree) (tree-map tree square))
+#+END_SRC
+***** 2.32
+#+BEGIN_SRC scheme
+(define (subsets s)
+  (if (null? s)
+      (list nil)
+      (let ((rest (subsets (cdr s))))
+        (append rest (map (lambda (x) (cons (car s) x)) rest)))))
+#+END_SRC
+Answer referenced from https://billthelizard.blogspot.com/2011/03/sicp-232-generating-power-sets.html
+*** 2.2.3 Sequences as Conventional Interfaces
+- Sequences serve as a conventional interface that permits us to combine processing modules.
+  - When we uniformly represent structures as sequences we localize the data structure dependencies in our programs to a small number of sequence operations.
+**** Exercises
+~accumulate~ procedure for reference:
+#+BEGIN_SRC scheme
+(define (accumulate op initial sequence)
+  (if (null? sequence)
+      initial
+      (op (car sequence)
+          (accumulate op initial (cdr sequence)))))
+#+END_SRC
+***** 2.33
+#+BEGIN_SRC scheme
+(define (acc-map p sequence)
+  (accumulate (lambda (x y) (cons (p x) y)) nil sequence))
+
+(acc-map (lambda (x) (+ 2 x)) '(1 2 3 4 5 6 7 8 9))
+#+END_SRC
+#+BEGIN_SRC scheme
+(define (acc-append seq1 seq2)
+  (accumulate cons seq2 seq1))
+
+(acc-append '(1 2 3) '(4 5 6))
+#+END_SRC
+#+BEGIN_SRC scheme
+(define (acc-length sequence)
+  (accumulate (lambda (x y) (+ y 1)) 0 sequence))
+
+(acc-length '(1 2 3 4 5 6 7 8 9 10))
+#+END_SRC
+***** 2.34
+#+BEGIN_SRC scheme
+(define (horner-eval x coefficient-sequence)
+  (accumulate (lambda (this-coeff higher-terms)
+                (+ (* x higher-terms) this-coeff))
+              0
+              coefficient-sequence))
+
+(horner-eval 2 (list 1 3 0 5 0 1))
+; Value 79
+#+END_SRC
+***** 2.35
+Original ~count-leaves~ procedure
+#+BEGIN_SRC scheme
+(define (count-leaves x)
+  (cond ((null? x) 0)
+        ((not (pair? x)) 1)
+        (else (+ (count-leaves (car x))
+                 (count-leaves (cdr x))))))
+
+(define my-tree (list 1 (list 2
+                              (list 3 4))
+                      (list 5 6)))
+(count-leaves my-tree)
+; Value 6
+#+END_SRC
+Redefined ~count-leaves~ as an accumulation
+#+BEGIN_SRC scheme
+(define (acc-count-leaves t)
+  (accumulate + 0 (map (lambda (x)
+                         (if (pair? x)
+                             (acc-count-leaves x)
+                             1))
+                       t)))
+(acc-count-leaves my-tree)
+; Value 6
+#+END_SRC
+***** 2.36
+#+BEGIN_SRC scheme
+(define (accumulate-n op init seqs)
+  (if (null? (car seqs))
+      '()
+      (cons (accumulate op init (map car seqs))
+            (accumulate-n op init (map cdr seqs)))))
+
+(define s (list '(1 2 3) '(4 5 6) '(7 8 9) '(10 11 12)))
+(accumulate-n + 0 s)
+#+END_SRC
+***** 2.37
+#+BEGIN_SRC scheme
+(define (dot-product v w)
+  (accumulate + 0 (map * v w)))
+
+(define (matrix-*-vector m v)
+  (map (lambda (row) (dot-product v row)) m))
+
+(define (transpose mat)
+  (accumulate-n cons '() mat))
+
+(define (matrix-*-matrix m n)
+  (let ((cols (transpose n)))
+    (map (lambda (row) (matrix-*-vector cols row)) m)))
+#+END_SRC
+***** 2.38
+#+BEGIN_SRC scheme
+(define (fold-left op initial sequence)
+  (define (iter result rest)
+    (if (null? rest)
+        result
+        (iter (op result (car rest))
+              (cdr rest))))
+  (iter initial sequence))
+
+(define fold-right accumulate)
+#+END_SRC
+A property that the ~op~ should satisfy to guarantee ~fold-right~ and ~fold-left~ produce the same results is the commutative property, such as that satisfied by ~+~ and ~*~ operations.
+***** 2.39
+#+BEGIN_SRC scheme
+(define (reverse-right sequence)
+  (fold-right (lambda (x y)
+                (append y (list x)))
+              '() sequence))
+
+(define (reverse-left sequence)
+  (fold-left (lambda (x y)
+               (append (list y) x))
+             '() sequence))
+
+(define s (list 1 2 3 4 5))
+(reverse-left s)
+(reverse-right s)
+#+END_SRC
+**** Nested Mappings
+- Mapping and accumulating with ~append~ is very common so we can abstract it into a procedure ~flatmap~
+#+BEGIN_SRC scheme
+(define (flatmap proc seq)
+  (accumulate append nil (map proc seq)))
+#+END_SRC
+**** Exercises
+***** 2.40
+Reference procedures from the section
+#+BEGIN_SRC scheme
+(define (flatmap proc seq)
+  (display proc) (display " ") (display seq)
+  (accumulate append '() (map proc seq)))
+
+;; prime? procedures from chapter 1
+(define (expmod base exp m)
+  (cond ((= exp 0) 1)
+        ((even? exp)
+         (remainder (square (expmod base (/ exp 2) m))
+                    m))
+        (else
+         (remainder (* base (expmod base (- exp 1) m))
+                    m))))
+
+(define (fermat-test n)
+  (define (try-it a)
+    (= (expmod a n n) a))
+  (try-it (+ 1 (random (- n 1)))))
+
+(define (fast-prime? n times)
+  (cond ((= times 0) true)
+        ((fermat-test n) (fast-prime? n (- times 1)))
+        (else false)))
+
+(define (prime? n)
+  (fast-prime? n 5))
+
+(define (prime-sum? pair)
+  (prime? (+ (car pair) (cadr pair))))
+
+(prime-sum? '(2 1))
+
+(define (make-pair-sum pair)
+  (list (car pair) (cadr pair) (+ (car pair) (cadr pair))))
+
+(define (prime-sum-pairs n)
+  (map make-pair-sum
+       (filter prime-sum?
+               (flatmap
+                (lambda (i)
+                  (map (lambda (j) (list i j))
+                       (enumerate-interval 1 (- i 1))))
+                (enumerate-interval 1 n)))))
+
+;; Solution
+
+(define (unique-pairs n)
+  (flatmap (lambda (i)
+             (map (lambda (j) (list i j))
+                  (enumerate-interval 1 (- i 1))))
+           (enumerate-interval 1 n)))
+
+(define (prime-sum-pairs n)
+  (map make-pair-sum
+       (filter prime-sum? (unique-pairs n))))
+#+END_SRC
+***** 2.41
+#+BEGIN_SRC scheme
+(define (unique-triples n)
+  (flatmap (lambda (i)
+             (map (lambda (x) (cons i x))
+                  (flatmap (lambda (j)
+                             (map (lambda (k)
+                                    (list j k))
+                                  (enumerate-interval 1 (- j 1))))
+                           (enumerate-interval 1 (- i 1)))))
+           (enumerate-interval 1 n)))
+
+(define (make-triple-sum t)
+  (+ (car t) (cadr t) (caddr t)))
+
+(define (triples-sum s n)
+  (filter (lambda (t)
+            (= (make-triple-sum t) s))
+          (unique-triples n)))
+
+(triples-sum 8 6)
+(triples-sum 7 6)
+(triples-sum 11 6)
+(triples-sum 10 6)
+#+END_SRC
+***** 2.42
+#+BEGIN_SRC scheme
+(define (adjoin-position row col positions)
+  (cons (make-position row col) positions))
+(define empty-board '())
+
+(define (make-position r c)
+  (cons r c))
+(define (row p)
+  (car p))
+(define (col p)
+  (cdr p))
+
+(define (on-diagonal? cp pos)
+  (= (abs (- (row cp) (row pos)))
+     (abs (- (col cp) (col pos)))))
+
+(define (safe2? c positions)
+  (let ((kth-queen (car positions))
+        (rest-queens (filter (lambda (pos)
+                               (not (= c (col pos))))
+                             positions)))
+    (define (iter q board)
+      (or (null? board)
+          (and (not (= (row kth-queen) (row (car board))))
+               (not (on-diagonal? kth-queen (car board)))
+               (iter q (cdr board)))))
+    (iter kth-queen rest-queens)))
+
+(define (queens board-size)
+  (define (queen-cols k)
+    (if (= k 0)
+        (list empty-board)
+        (filter
+         (lambda (positions) (safe2? k positions))
+         (flatmap
+          (lambda (rest-of-queens)
+            (map (lambda (new-row)
+                   (adjoin-position new-row k rest-of-queens))
+                 (enumerate-interval 1 board-size)))
+          (queen-cols (- k 1))))))
+  (queen-cols board-size))
+
+(length (queens 8))
+;; 92
+#+END_SRC
+
+A lot of guidance from https://billthelizard.blogspot.com/2011/06/sicp-242-243-n-queens-problem.html
+***** 2.43
+The program runs so slowly because it is evaluating every possible layout of the board to determine which is valid. Interchanging the order of the nested mappings results in building a complete board and checking it for each row, rather than building the board up a row at a time (transforming the process from a linear recursive problem to a tree recursive problem and tree-recursive processes grow exponentially). The execution time of the solution, if the program in 2.42 executes in /T/ will be /T^n/
+*** 2.2.4 Example: A Picture Language
