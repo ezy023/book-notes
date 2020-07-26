@@ -749,3 +749,146 @@ A lot of guidance from https://billthelizard.blogspot.com/2011/06/sicp-242-243-n
 ***** 2.43
 The program runs so slowly because it is evaluating every possible layout of the board to determine which is valid. Interchanging the order of the nested mappings results in building a complete board and checking it for each row, rather than building the board up a row at a time (transforming the process from a linear recursive problem to a tree recursive problem and tree-recursive processes grow exponentially). The execution time of the solution, if the program in 2.42 executes in /T/ will be /T^n/
 *** 2.2.4 Example: A Picture Language
+- It is important to describe a language by focusing on the language's primitives, its means of combination and its means of abstraction.
+**** Exercises
+***** 2.44
+#+BEGIN_SRC scheme
+(define (up-split painter n)
+  (if (= n 0)
+      painter
+      (let ((smaller (up-split painter (- n 1))))
+        (below painter (beside smaller smaller)))))
+#+END_SRC
+***** 2.45
+#+BEGIN_SRC scheme
+(define (split first second)
+  (lambda (painter)
+    (second painter (first painter painter))))
+
+(define right-split-2 (split below beside))
+(define up-split-2 (split beside below))
+#+END_SRC
+***** 2.46
+#+BEGIN_SRC scheme
+(define (my-make-vect x y)
+  (cons x y))
+(define (xcor-vect v) (car v))
+(define (ycor-vect v) (cdr v))
+
+(define (add-vect v1 v2)
+  (make-vect (+ (xcor-vect v1)
+                (xcor-vect v2))
+             (+ (ycor-vect v1)
+                (ycor-vect v2))))
+
+(define (sub-vect v1 v2)
+  (make-vect (- (xcor-vect v1)
+                (xcor-vect v2))
+             (- (ycor-vect v1)
+                (ycor-vect v2))))
+
+(define (scale-vect s v)
+  (make-vect (* s (xcor-vect v))
+             (* s (ycor-vect v))))
+#+END_SRC
+***** 2.47
+#+BEGIN_SRC scheme
+;; a
+(define (make-frame-a origin edge1 edge2)
+  (list origin edge1 edge2))
+
+(define (origin-frame-a frame)
+  (car frame))
+(define (edge1-frame-a frame)
+  (cadr frame))
+(define (edge2-frame-a frame)
+  (caddr frame))
+
+(define test-a (make-frame-a 1 2 3))
+(origin-frame-a test-a)
+(edge1-frame-a test-a)
+(edge2-frame-a test-a)
+
+;; b
+(define (make-frame-b origin edge1 edge2)
+  (cons origin (cons edge1 edge2)))
+
+(define (origin-frame-b frame)
+  (car frame))
+(define (edge1-frame-b frame)
+  (cadr frame))
+(define (edge2-frame-b frame)
+  (cddr frame))
+
+(define test-b (make-frame-b 1 2 3))
+(origin-frame-b test-b)
+(edge1-frame-b test-b)
+(edge2-frame-b test-b)
+#+END_SRC
+***** 2.48
+#+BEGIN_SRC scheme
+(define (make-segment-2 sv ev)
+  (cons sv ev))
+(define (start-segment-2 segment)
+  (car segment))
+(define (end-segment-2 segment)
+  (cdr segment))
+#+END_SRC
+***** 2.49
+a.
+#+BEGIN_SRC scheme
+(define outline-painter
+  (lambda (frame)
+    (segments->painter (list (make-segment (frame-origin frame) (frame-edge1 frame))
+                             (make-segment (frame-origin frame) (frame-edge2 frame))
+                             (make-segment (frame-edge2 frame) (vector-add (frame-edge1 frame) (frame-edge2 frame)))
+                             (make-segment (frame-edge1 frame) (vector-add (frame-edge2 frame) (frame-edge1 frame)))))))
+
+(define test-frame (make-frame (make-vect 0 0)
+                               (make-vect 0.99 0)
+                               (make-vect 0 0.99)))
+(paint (outline-painter test-frame))
+#+END_SRC
+b.
+#+BEGIN_SRC scheme
+(define x-painter
+  (lambda (frame)
+    (segments->painter (list (make-segment (frame-origin frame) (vector-add (frame-edge1 frame) (frame-edge2 frame)))
+                             (make-segment (frame-edge1 frame) (frame-edge2 frame))))))
+
+(paint (x-painter test-frame))
+#+END_SRC
+c.
+#+BEGIN_SRC scheme
+(define diamond-painter
+  (lambda (frame)
+    (segments->painter (list (make-segment (vector-scale 0.5 (frame-edge1 frame)) (vector-scale 0.5 (frame-edge2 frame)))
+                             (make-segment (vector-scale 0.5 (frame-edge1 frame)) (vector-add (make-vect 1 0) (vector-scale 0.5 (frame-edge2 frame))))
+                             (make-segment (vector-add (make-vect 1 0) (vector-scale 0.5 (frame-edge2 frame))) (vector-add (make-vect 0 1) (vector-scale 0.5 (frame-edge1 frame))))
+                             (make-segment (vector-add (make-vect 0 1) (vector-scale 0.5 (frame-edge1 frame))) (vector-scale 0.5 (frame-edge2 frame)))
+                             ))))
+
+(paint (diamond-painter test-frame))
+#+END_SRC
+d.
+Skipped
+***** 2.50
+#+BEGIN_SRC scheme
+(define (my-flip-horiz painter)
+  (my-transform-painter painter
+                        (make-vect 1.0 0.0)
+                        (make-vect 0.0 0.0)
+                        (make-vect 1.0 1.0)))
+#+END_SRC
+Skipped other transforms
+***** 2.51
+Skipped
+***** 2.52
+Skipped
+**** Levels of language for robust design
+- /stratified design/ is the notino that a complex system should be structured as a sequence of levels that are described using a sequence of languages.
+  - Each level is constructed by combining parts that are regarded as primitive at that level, and the parts constructed at each level are used as primitives at the next level.
+  - The language used at each level of a stratified design has primitives, means of combination, and means of abstraction appropriate to that level of detail.
+  - Stratified design helps make programs robust, making it likely that small changes in a specification will require correspondingly small changes in the program.
+** 2.3 Symbolic Data
+*** 2.3.1 Quotation
