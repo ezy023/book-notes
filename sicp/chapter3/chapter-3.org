@@ -1,0 +1,916 @@
+* Chapter 3 Modularity, Objects, and State
+- Focusing on two system organiation strategies
+  - The first concentrates on /objects/, viewing the larger system as a collection of distinct objects whose behaviors may change over time.
+  - The second concentrates on the streams of information that flow in the system.
+** 3.1 Assignment and Local State
+- An object is said to "have state" if its behavior is influenced by its history
+- Each computational object must have its own /local stat variables/ describing the actual object's state.
+*** 3.1.1 Local State Variables
+- A new form, ~set!~ can be used to change a symbols value
+#+BEGIN_SRC scheme
+(set! <name> <new-value>)
+#+END_SRC
+  - ~set!~ changes ~<name>~ to the value of the result obtained by evaluating ~<new-value>~
+
+#+BEGIN_SRC scheme
+(begin <exp1> <exp2> ... <expK>)
+#+END_SRC
+- A new form ~begin~ evaluates the expressions passed to it in sequence and returns the value of the final expression, ~<expK>~ as the value of the entire ~begin~ form.
+**** Exercises
+***** 3.1
+#+BEGIN_SRC scheme
+(define (make-accumulator val)
+  (lambda (amount)
+    (begin (set! val (+ val amount))
+           val)))
+#+END_SRC
+***** 3.2
+#+BEGIN_SRC scheme
+  (define (make-monitored f)
+    (let ((count 0))
+      (define (how-many-calls?)
+        count)
+      (define (reset-count)
+        (set! count 0))
+      (define (dispatch m)
+        (cond ((eq? m 'how-many-calls?) (how-many-calls?))
+              ((eq? m 'reset-count) (reset-count))
+              (else
+               (begin (set! count (+ count 1))
+                      (f m)))))
+      dispatch))
+
+(define (my-display s) (display s))
+(define p (make-monitored my-display))
+
+(p "test")
+(p 'how-many-calls?)
+(p 'reset-count)
+#+END_SRC
+***** 3.3
+#+BEGIN_SRC scheme
+(define (make-account balance passwd)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (dispatch pw m)
+    (if (eq? pw passwd)
+        (cond ((eq? m 'withdraw) withdraw)
+              ((eq? m 'deposit) deposit)
+              (else (error "Unknown request -- MAKE-ACCOUNT"
+                           m)))
+        (error "Incorrect password")))
+  dispatch)
+
+(define acc (make-account 100 'some-password))
+((acc 'some-password 'withdraw) 40)
+((acc 'some-other-password 'deposit) 50)
+#+END_SRC
+***** 3.4
+#+BEGIN_SRC scheme
+(define (make-account balance passwd)
+  (let ((attempts 7))
+    (define (withdraw amount)
+     (if (>= balance amount)
+         (begin (set! balance (- balance amount))
+                balance)
+         "Insufficient funds"))
+   (define (deposit amount)
+     (set! balance (+ balance amount))
+     balance)
+   (define (call-the-cops)
+     (error "Too many invalid attempts, calling the cops"))
+   (define (dispatch pw m)
+     (if (eq? pw passwd)
+         (cond ((eq? m 'withdraw) withdraw)
+               ((eq? m 'deposit) deposit)
+               (else (error "Unknown request -- MAKE-ACCOUNT"
+                            m)))
+         (begin
+           (if (= attempts 0)
+               (call-the-cops)
+               (set! attempts (- attempts 1)))
+           (error "Incorrect password"))))
+   dispatch))
+
+(define acc (make-account 100 'some-password))
+((acc 'wrong-password 'withdraw) 90)
+#+END_SRC
+*** 3.1.2 The Benefits of Introducing Assignment
+**** Exercises
+***** 3.5
+**Unfinished**
+- Given in section
+#+BEGIN_SRC scheme
+(define (rand-update x)
+  (modulo (+ 31 (* 29 x)) 11))
+(define random-init 23)
+(define my-rand
+  (let ((x random-init))
+    (lambda ()
+      (set! x (rand-update x))
+      x)))
+
+(define (estimate-pi trials)
+  (sqrt (/ 6 (monte-carlo trials cesaro-test))))
+(define (cesaro-test)
+  (= (gcd (my-rand) (my-rand)) 1))
+(define (monte-carlo trials experiment)
+  (define (iter trials-remaining trials-passed)
+    (cond ((= trials-remaining 0)
+           (display trials-passed) (display " ") (display trials)
+           (/ trials-passed trials))
+          ((experiment)
+           (iter (- trials-remaining 1) (+ trials-passed 1)))
+          (else
+           (iter (- trials-remaining 1) trials-passed))))
+  (iter trials 0))
+#+END_SRC
+- Solution (Unfinished)
+#+BEGIN_SRC scheme
+(define (random-in-range low high)
+  (let ((range (- high low)))
+    (+ low (random range))))
+(define (predicate x y r)
+  (lambda (xg yg)
+    (<= (square r)
+        (+ (square (- xg x))
+           (square (- yg y))))))
+(define (area-of-square x1 x2 y1 y2)
+  (* (- x2 x1)
+     (- y2 y1)))
+(define (estimate-integral P x1 x2 y1 y2 trials)
+  (* (monte-carlo trials (lambda () (P (random-in-range x1 x2)
+                                       (random-in-range y1 y2))))
+     (area-of-square x1 x2 y1 y2)))
+(estimate-integral (predicate 5 7 3) 2 8 4 10 1000)
+#+END_SRC
+***** 3.6
+#+BEGIN_SRC scheme
+(define my-rand
+  (let ((initial random-init))
+    (let ((x initial))
+      (define (generate)
+        (begin (set! x (rand-update x))
+               x))
+      (define (reset val)
+        (set! x val))
+      (define (dispatch m)
+        (cond ((eq? m 'generate)
+               (generate))
+              ((eq? m 'reset)
+               reset)
+              (else
+               (error "Unknown procedure -- MY-RAND"))))
+      dispatch)))
+#+END_SRC
+*** 3.1.3 The Costs of Introducing Assignment
+- Programming without any use of assignments is known as /functional programming/. Two evaluations of the same procedure with the same arguments will produce the same result.
+- With the introduction of ~set!~ and the idea that the value of a variable can change, a variable can no longer be considered as simply a name for a value, but now is a symbole that refers to a place where a value can be stored, and the value stored at this place can change.
+**** Sameness and change
+- A language that supports the concept that "equals can be substituted for equals" in an expression without changing the value of the expression is said to be /referentially transparent/.
+  - Referentials transparency is violated when we include ~set!~ in our computer languages.
+**** Pitfalls of imperative programming
+- Programming that makes extensive use of assignment is known as /imperative programming/
+- In general, programming with assignment forces us to carefully consider the relative orders of the assignments to make sure that each statement is using the correct version of the variables that have been changed.
+**** Exercises
+***** 3.7
+#+BEGIN_SRC scheme
+(define (make-account balance passwd)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (dispatch pw m)
+    (if (eq? pw passwd)
+        (cond ((eq? m 'withdraw) withdraw)
+              ((eq? m 'deposit) deposit)
+              (else (error "Unknown request -- MAKE-ACCOUNT"
+                           m)))
+        (error "Incorrect password -- MAKE-ACCOUNT" (list pw))))
+  dispatch)
+
+(define (make-joint account password new-password)
+  (define (dispatch pw m)
+    (if (eq? pw new-password)
+        (account password m)
+        (error "Incorrect password -- MAKE-JOINT" pw)))
+  dispatch)
+
+(define peter-acc (make-account 100 'open-sesame))
+(define paul-acc (make-joint peter-acc 'open-sesame 'rosebud))
+
+((peter-acc 'open-sesame 'deposit) 100)
+((paul-acc 'rosebud 'withdraw) 150)
+((paul-acc 'rosebud 'deposit) 200)
+#+END_SRC
+***** 3.8
+Skipped
+** 3.2 The Environment Model of Evaluation
+- Variables designate a place in which values can be stored. These places are maintained in structures called /environments/
+  - An environment is a sequence of /frames/, each frame being a table (possibly empty) of /bindings/ that associate variable names with their corresponding values
+    - A single frame may contain at most one binding for any variable
+    - Each frame also contains a pointer to its /enclosing environment/ unless it is the /global/ frame
+  - The value of a variable with respect to an environment is the value given by the binding of the variable in the first frame in the environment that contains a binding for that variable.
+  - If no frame in the sequence specifies a binding for the variable then the variable is said to be /unbound/ in the environment.
+- The environment is crucial to the evaluation process because it determines the context in which an expression should be evaluated
+- One could say that expressions in a programming language do not, in themselves, have any meaning. Rather an expression acquires a meaning only with respect to some environment in which it is evaluated.
+*** 3.2.1 The Rules for Evaluation
+- The environment model of procedure application can be summarized by two rules:
+.  - A procedure object is applied to a set of arguments by constructing a frame, binding the formal parameters of the procedure to the arguments of the call, and then evaluating the body of the procedure in the context of the new environment constructed. The new frame has as its enclosing environment the environment part of the procedure object being applied
+  - A procedure is created by evaluating a ~lambda~ expression relative to a given environment. The resulting procedure object is a pair consisting of the text of the ~lambda~ expression and a pointer to the environment in which the procedure was created.
+
+- Defining a symbol using ~define~ creates a binding in the current environment frame and assigns to the symbol the indicated value.
+- Evaluating the ~set!~ expression in some environment locates the binding of the variable in the environment and changes the binding to indicate the new value
+  - If the variable is unbound in the environment ~set!~ signals an error
+*** 3.2.2 Applying Simple Procedures
+**** Exercises
+***** 3.9
+#+BEGIN_SRC artist
+
+#+END_SRC
+Skipped (done on paper)
+*** 3.2.3 Frames as the Repository of Local State
+**** Exercises
+***** 3.10
+(on paper)
+The difference between the two environment structures is that ~W1~ contains a third frame which holds the definition of the ~amount~ variable in the ~lambda~ that is provided in the ~(W1 50)~ call.
+*** 3.2.4 Internal Definitions
+The environment model explains the two key properties that make local procedure definitions a usefult technique for modularizing programs
+- Local procedure names do not interfere with names external to the enclosing procedure because the local procedure names will be bound in the frame that the procedure creates when it is run, rather than being bound in the global environment
+- The local procedure can access arguments of the enclosing procedure, simply by using parameter names as free variables. This is because the body of the local procedure is evaluated in an environment that is subordinate to the evaluation environment of the enclosing procedure.
+**** Exercises
+***** 3.11
+The local state for ~acc~ is kept in the environment frame, E1, that is created by the call to ~make-account~.
+
+With a second account, ~acc2~, created by the call to ~make-account~, a new environment frame is created and holds the state of ~acc2~'s balance. The environment structures that are shared betwee the two are the procedure definitions for ~withdraw~, ~deposit~, ~dispatch~
+** 3.3 Modeling with Mutable Data
+- /mutators/ are operation that modify data objects
+  - Data objects for which mutators are defined are known as /mutable data objects/
+*** 3.3.1 Mutable List Structure
+***** Exercises
+****** 3.12
+#+BEGIN_SRC scheme
+(define (append! x y)
+  (set-cdr! (last-pair x) y)
+  x)
+(define (last-pair x)
+  (if (null? (cdr x))
+      x
+      (last-pair (cdr x))))
+
+(define x (list 'a 'b))
+(define y (list 'c 'd))
+(define z (append! x y))
+#+END_SRC
+Since ~append!~ is a mutable operation, changing the ~x~ structure, the results of ~(append! x y)~ means that the last pair in ~x~ has its ~cdr~ pointer set to point to ~y~. Therefore ~x~ is now the full list ~(a b c d)~ -- no new list was created as happens with the normal ~append~ procedure that appends by cons'ing elements of x onto y -- and y still represents the list ~(c d)~
+
+#+BEGIN_SRC scheme
+(cdr x)
+; '(b c d)
+(define w (append! x y))
+
+(cdr x)
+; '(b c d)
+#+END_SRC
+
+The result of ~(cdr x)~ is the same for each operation above because ~append!~ sets the cdr pointer for x rather than building a new list. Thus when we call ~(append! x y~ again for the definition of ~w~ we are just resetting the cdr pointer of ~x~ to ~y~, which it is already at from the definition of ~z~ above.
+****** 3.13
+#+BEGIN_SRC scheme
+(define (make-cycle x)
+  (set-cdr! (last-pair x) x)
+  x)
+(define z (make-cycle (list 'a 'b 'c)))
+#+END_SRC
+~z~ becomes a list in which the last pair, ~c~, has as its cdr a pointer to the first pair ~a~. If you try to compute the ~(last-pair z)~ you would enter an infinite loop because the list of z never terminates and you would not ever reach the base case of having a null ~cdr~ cell.
+****** 3.14
+#+BEGIN_SRC scheme
+(define (mystery x)
+  (define (loop x y)
+    (if (null? x)
+        y
+        (let ((temp (cdr x)))
+          (set-cdr! x y)
+          (loop temp x))))
+  (loop x '()))
+
+(define v (list 'a 'b 'c 'd))
+(define w (mystery v))
+#+END_SRC
+
+The ~mystery~ procedure reverses the input list. The value of ~v~ however, becomes a single value list because on the initial execution of the procedure the ~set-cdr!~ procedure is passed a pointer to ~v~ and sets the ~cdr~ of ~v~ to the empty list. In the proceeding calls to loop it is passed the ~cdr~ of the list that is pointed to by the ~temp~ variable. So, at the end of the procedure ~w~ points to the first cell in the list, ~d~, while ~v~ contains a pointer to the last cell in the list, ~a~.
+#+BEGIN_SRC
+w                        v
+[d][-]->[c][-]->[b][-]->[a][/]
+#+END_SRC
+**** Sharing and identity
+***** Exercises
+****** 3.15
+<On paper>
+****** 3.16
+<On paper>
+****** 3.17
+#+BEGIN_SRC scheme
+(define (count-pairs x)
+  (let ((seen '()))
+    (define (count y)
+      (cond ((not (pair? y)) 0)
+            ((memq y seen) 0)
+            (else
+             (set! seen (cons y seen))
+             (+ (count (car y))
+                (count (cdr y))
+                1))))
+    (count x)))
+
+
+
+
+(define z1 '(a b c))
+(count-pairs z1)
+
+(define z2 '((a b) c d))
+(count-pairs z2)
+
+(define z3 '((a b) (c d)))
+(count-pairs z3)
+
+(define z4 (cons (cons 'a 'b) (cons 'c 'd)))
+(count-pairs z4)
+
+(define z5 (cons (cons (cons 'a 'b) 'c)
+                 (cons 'd 'e)))
+(count-pairs z5)
+#+END_SRC
+Used help from the sicp community wiki and other solutions
+****** 3.18
+#+BEGIN_SRC scheme
+(define (cycle? l)
+  (define (check-cdrs f s)
+    (cond ((null? s) #f)
+          ((null? f) #f)
+          ((eq? (car f) (car s))
+           #t)
+          (else
+           (if (null? (cdr s))
+               #f
+               (check-cdrs (cdr f) (cddr s))))))
+  (check-cdrs (cdr l) (cddr l)))
+
+(cycle? (list 'a 'b 'c 'd 'e))
+(cycle? (circular-list 'a 'b 'c 'd 'e))
+#+END_SRC
+The above procedure works by looping through the list at two different rates, one looping through one element at a time using ~cdr~, the other looping through two elements at a time using ~cddr~. If the list is a cycle, eventually the faster loop using ~cddr~ will loop around the list and the ~car~ of the sublists created by ~cdr~ and ~cddr~ will be the same and we'll reach the determination the list is cyclical. If either results in a null value, we know the list terminates without a cycle present.
+****** 3.19
+The above algorithm for Exercise 3.18 works in constant space because it iterates over the same list at different rates. Essentially it just moves two pointer over the list at different rates until the list terminates or the pointers point to the same item. No additional space is needed. The solution is essentially Floyd's tortoise and hare algorithm.
+**** Mutation is just assignment
+The same way we can represent compound data in terms of procedures we can also represent mutable data objects as procedures using assingment and local state
+#+BEGIN_SRC scheme
+(define (cons x y)
+  (define (set-x! v) (set! x v))
+  (define (set-y! v) (set! y v))
+  (define (dispatch m)
+    (cond ((eq? m 'car) x)
+          ((eq? m 'cdr) y)
+          ((eq? m 'set-car!) set-x!)
+          ((eq? m 'set-cdr!) set-y!)
+          (else
+           (error "Undefined operation -- CONS" m))))
+  dispatch)
+#+END_SRC
+*** 3.3.2 Representing Queues
+- A /queue/ is a sequence in which items are inserted at one end (the /rear/ of the queue) and deleted from the other end (the /front/)
+  - Items are always removed in the order they are inserted, thus a queue is sometimes called a /FIFO/ (first in, first out) buffer
+**** Exercises
+***** 3.21
+The queue is represented as pointers to places on a list. When ~b~ is deleted the from the queue it still appears to be in the queue because the ~rear-ptr~ of the queue is still pointing to that pair event though the ~front-ptr~ is pointing to the empty list (which is the ~cdr~ of the last item of the list). In the ~delete-queue!~ procedure, we only update the front-pointer however.
+What is meant by the LISP printer not understanding the queue representation, the printer is interpreting the queue as two pointers to list objects. The front pointer points to the first item which is the beginning of the list representation and when the printer encounters the pair which the front pointer points to, it prints it as a list until it reaches a pair with a ~cons~ cell of the empty list signaling the termination of the list. When the the printer inspects the rear pointer of the queue it just see a single pair in which the ~car~ cell is the value and the ~cons~ cell is the empty list, so it prints it as the last item of a list. The following snippet illustrates this in code:
+#+BEGIN_SRC scheme
+(define the-list '(a b c d))
+;; front-ptr
+(define front the-list)
+;; rear-ptr
+(define rear (cdddr l))
+;; queue represented as a pair
+(display (cons l rear))
+#+END_SRC
+
+~print-queue~ below prints the sequence of items in the queue, rather than the pair that reprsents the points to the front and rear of the queue.
+#+BEGIN_SRC scheme
+(define (print-queue queue)
+  (display (front-ptr queue)))
+
+(define q1 (make-queue))
+(insert-queue! q1 'a)
+(insert-queue! q1 'b)
+(insert-queue! q1 'c)
+(display q1)
+(print-queue q1)
+(delete-queue! q1)
+(display q1)
+(print-queue q1)
+#+END_SRC
+***** 3.22
+#+BEGIN_SRC scheme
+(define (new-make-queue)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    (define (empty-queue?)
+      (null? front-ptr))
+    (define (insert-queue! item)
+      (let ((new-entry (cons item '())))
+        (if (empty-queue?)
+            (begin
+              (set! front-ptr new-entry)
+              (set! rear-ptr new-entry)
+              front-ptr)
+            (begin
+              (set-cdr! rear-ptr new-entry)
+              (set! rear-ptr new-entry)
+              front-ptr))))
+    (define (delete-queue!)
+      (if (empty-queue?)
+          (error "DELETE called with an empty queue")
+          (begin
+            (set! front-ptr (cdr front-ptr))
+            front-ptr)))
+    (define (print-queue)
+      (display front-ptr)
+      (newline)
+      (display rear-ptr)
+      (newline)
+      (display (cons front-ptr rear-ptr)))
+    (define (dispatch m)
+      (cond ((eq? m 'empty-queue?) empty-queue?)
+            ((eq? m 'insert-queue!) insert-queue!)
+            ((eq? m 'delete-queue!) delete-queue!)
+            ((eq? m 'print-queue) print-queue)
+            (else (error "No method defined for queue -- DISPATCH " m))))
+    dispatch))
+
+(define q2 (new-make-queue))
+((q2 'print-queue))
+((q2 'insert-queue!) 'a)
+((q2 'insert-queue!) 'b)
+((q2 'insert-queue!) 'c)
+((q2 'delete-queue!))
+#+END_SRC
+***** 3.23
+#+BEGIN_SRC scheme
+;; Deque
+
+;;; Deque Entry
+(define (make-deque-entry val)
+  ;; entry is a pair of (val, prev-pointer)
+  (cons val '()))
+(define (deque-entry-prev entry)
+  (cdr entry))
+(define (deque-entry-value entry)
+  (car entry))
+(define (set-deque-entry-prev! entry v)
+  (set-cdr! entry v))
+
+;;; Deque impl
+(define (make-deque)
+  (cons '() '()))
+(define (front-deque d)
+  (car d))
+(define (rear-deque d)
+  (cdr d))
+(define (set-front-deque! d v)
+  (set-car! d v))
+(define (set-rear-deque! d v)
+  (set-cdr! d v))
+(define (empty-deque? d)
+  (and (null? (front-deque d))
+       (null? (rear-deque d))))
+(define (deque-pair-entry pair)
+  (car pair))
+(define (front-insert-deque! d item)
+  (let ((new-entry (make-deque-entry item))
+        (head (front-deque d)))
+    (let ((new-pair (cons new-entry '())))
+      (set-deque-entry-prev! (deque-pair-entry head) new-entry)
+      ;; could (cons new-entry head) instead of set-cdr! here
+      (set-cdr! new-pair head)
+      (set-front-deque! d new-pair))))
+(define (rear-insert-deque! d item)
+  (let ((new-entry (make-deque-entry item)))
+    (let ((new-pair (cons new-entry '())))
+      (if (empty-deque? d)
+         (begin
+           (set-front-deque! d new-pair)
+           (set-rear-deque! d new-pair))
+         (begin
+           (let ((tail (rear-deque d)))
+             (set-deque-entry-prev! new-entry tail)
+             (set-cdr! tail new-pair)
+             (set-rear-deque! d new-pair)))))))
+(define (front-delete-deque! d)
+  (set-front-deque! d (cdr (front-deque d))))
+(define (rear-delete-deque! d)
+  (let ((tail (rear-deque d)))
+    (let ((tail-prev (deque-entry-prev (deque-pair-entry tail))))
+      (set-cdr! tail-prev '())
+      (set-rear-deque! d tail-prev))))
+(define (print-deque d)
+  (map deque-entry-value (front-deque d)))
+
+
+(define d1 (make-deque))
+(rear-insert-deque! d1 'a)  ; (a)
+(rear-insert-deque! d1 'b)  ; (a b)
+(front-insert-deque! d1 'c) ; (c a b)
+(rear-delete-deque! d1)     ; (c a)
+(front-delete-deque! d1)    ; (a)
+
+(print-deque d1)
+#+END_SRC
+*** 3.3.3 Representing Tables
+#+BEGIN_SRC scheme
+(define (lookup key table)
+  ;; (cdr table) because the table is represented by a 'headed list' and the first record is the dummy record
+  (let ((record (assoc key (cdr table))))
+    (if record
+        (cdr record)
+        false)))
+
+(define (assoc key records)
+  (cond ((null? records) false)
+        ;; a record is a pair with the car cell pointing to a pair of (key . val) and the cdr cell pointing to the next record
+        ((equal? key (caar records)) (car records))
+        (else (assoc key (cdr records)))))
+
+(define (insert! key value table)
+  ;; again, (cdr table) because the first record is the dummy record
+  (let ((record (assoc key (cdr table))))
+    (if record
+        (set-cdr! record value)
+        (set-cdr! table
+                  (cons (cons key value) (cdr table))))))
+
+(defin (make-table)
+  (list '*table*))
+#+END_SRC
+**** Two dimensional tables
+#+BEGIN_SRC scheme
+(define (lookup key-1 key-2 table)
+  (let ((subtable (assoc key-1 (cdr table))))
+    (if subtable
+        (let ((record (assoc key-2 (cdr subtable))))
+          (if record
+              (cdr record)
+              false))
+        false)))
+
+(define (insert! key-1 key-2 value table)
+  (let ((subtable (assoc key-1 (cdr table))))
+    (if subtable
+        (let ((record (assoc key-2 (cdr subtable))))
+          (if record
+              (set-cdr! record value)
+              (set-cdr! subtable
+                        (cons (cons key-2 value)
+                              (cdr subtable)))))
+        (set-cdr! table
+                  (cons (list key-1
+                              (cons key-2 value))
+                        (cdr table))))))
+#+END_SRC
+**** Creating local tables
+Below implements a table as a procedure that keeps an internal table as part of its local state.
+#+BEGIN_SRC scheme
+(define (make-table)
+  (let ((local-table (list '*table*)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (cdr record)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (set-cdr! record value)
+                  (set-cdr! subtable
+                            (cons (cons key-2 value)
+                                  (cdr subtable)))))
+            (set-cdr! local-table
+                      (cons (list key-1
+                                 (cons key-2 value))
+                            (cdr local-table)))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc) insert!)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+#+END_SRC
+**** Exercises
+***** 3.24
+#+BEGIN_SRC scheme
+(define (make-table->same-key same-key?)
+  (let ((local-table (list '*table*)))
+    (define (lookup key)
+      (let ((record (same-key? key (cdr local-table))))
+        (if record
+            (cdr record)
+            false)))
+    (define (insert! key value)
+      (let ((record (same-key? key (cdr local-table))))
+        (if record
+            (set-cdr! record value)
+            (set-cdr! local-table
+                      (cons (cons key value)
+                            (cdr local-table))))))
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+
+(define t1 (make-table->same-key assoc))
+((t1 'lookup-proc) "first")
+((t1 'insert-proc!) "first" 1)
+((t1 'insert-proc!) "second" 2)
+((t1 'lookup-proc) "first")
+((t1 'lookup-proc) "second")
+
+(define (assoc-round key table)
+  (if (null? table)
+      false
+      (let ((record (car table)))
+        (if (= (round key) (round (car record)))
+            record
+            (assoc-round key (cdr table))))))
+(define t2 (make-table->same-key assoc-round))
+((t2 'lookup-proc) 1.2)
+((t2 'insert-proc!) 1.2 "first")
+((t2 'lookup-proc) 1.3)
+((t2 'insert-proc!) 2.4 "second")
+((t2 'lookup-proc) 1.9)
+#+END_SRC
+***** 3.25
+#+BEGIN_SRC scheme
+(define (make-table->general)
+  (let ((local-table (list '*table*)))
+    (define (lookup keys)
+      (define (internal-lookup keys table)
+        (let ((key (car keys)))
+          (let ((record (assoc key (cdr table))))
+            (if record
+                (if (not (null? (cdr keys)))
+                    (internal-lookup (cdr keys) record)
+                    (cdr record))
+                false))))
+      (internal-lookup keys local-table))
+    (define (insert! keys val)
+      (define (internal-insert keys val table)
+       (let ((key (car keys)))
+         (if (null? (cdr keys))
+             ;; last key, create a record
+             (let ((record (assoc key (cdr table))))
+               (if record
+                   (set-cdr! record val)
+                   (set-cdr! table (cons (cons key val)
+                                         (cdr table)))))
+             ;; more keys left, looking at subtables
+             (let ((record (assoc key (cdr table))))
+               (if record
+                   ;; i already have a subtable or record here, cdr could be a pair or val, if its a val it needs to become a pair
+                   (if (pair? (cdr record))
+                       ;; record is a list already
+                       (internal-insert (cdr keys) val record)
+                       ;; else i have a k-v and need to create a new subtable
+                       (let ((subtable (list key)))
+                         (internal-insert (cdr keys) val subtable)
+                         (set-cdr! record (cdr subtable))))
+                   ;; no record here, new subtable
+                   (let ((subtable (list key)))
+                     (internal-insert (cdr keys) val subtable)
+                     (set-cdr! table (cons subtable
+                                           (cdr table)))))))))
+      (internal-insert keys val local-table))
+    (define (show)
+      (display local-table))
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            ((eq? m 'show) show)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+
+(define t4 (make-table->general))
+((t4 'lookup-proc) (list 'one))
+((t4 'insert-proc!) (list 'one) 1)
+((t4 'insert-proc!) (list 'one 'two) 2)
+((t4 'lookup-proc) (list 'one 'two))
+((t4 'insert-proc!) (list 'one 'three) 3)
+((t4 'lookup-proc) (list 'one 'three))
+((t4 'insert-proc!)  (list 'one 'two 'four) 4)
+((t4 'lookup-proc) (list 'one 'two 'four))
+((t4 'show))
+((t4 'insert-proc!) (list 'one 'three 'five 'six) 6)
+((t4 'lookup-proc) (list 'one 'three 'five 'six))
+#+END_SRC
+***** 3.26
+A table with entries, key-value pairs, organinzed using a binary tree would allow for me efficient lookups and insertions into the table. Moving from an list-structure with O(n) operation to a tree with O(log n) operation would be a significant improvement. To implement a table backed by a binary tree you would need a means to sort the keys, for example with string keys you may sort them alphabetically. With this in place inserts of new records would be the same as inserting into a new tree: start at the root node, compare the key, walk down the left branch if the key is less than, walk down the right if the key is greater than, when you reach an empty branch insert the record. Lookups then follow the same pattern of walking the tree, returning the record if the key is found or false if it is not. To support subtables the implementation remains similar to the list implementation above, but when inserting a subtable at a key instead of creating a new headed list we create a new tree and set the value pointer of the key in the primary table to the pointer of the new root node of the tree. Lookups into subtable would proceed similarly, look up the first key, if the value of the first key is a tree then look up the second key in the subtable tree and proceed until you find the value or false.
+***** 3.27
+(Diagram drawn on paper)
+~memo-fib~ computes the n-th fibonacci number in a number of steps proportional to n because it only needs to compute each fibonacci number once, then the number is memoized in the table. Therefore to compute ~(memo-fib 3)~ you only ever need to compute at most 3 fibonacci number, the first comput for each number in the sequence up to three. After that the computation is stored and can be retrieved from the table instead of being recomputed on a future execution of the procedure. So, for example, after you have incurred the cost of calculated the first 3 fibonacci numbers, if you execute the procedure for the next in sequence, ~(memo-fib 4)~, instead of computing ~(+ (memo-fib 2) (memo-fib 3))~ you just lookup the previously computed values, add them and return, so the calculation has only take one addition step, that for the 4th fibonacci number, instead of the four steps needed to calculate the 4th fibonacci number from scratch. So as you calculate number further along in the sequence the number of steps will grow proportionally to n, but not exponentially as it would in an un-memoized version. ~(memo-fib 5)~ takes one additional step on top of ~(memo-fib 4)~, ~(memo-fib 6)~ one more on top of 5 and so on.
+*** 3.3.4 A Simulator for Digital Ciruits
+- /event-driven simulation/ - actions ("events") trigger further events that happen at a later time, which in turn trigger more events, and so on.
+- A /half-adder/ circuit consists of an or-gate, two and-gates, and an inverter. It takes two input signals, A and B, and produces two output signals, S and C. S will be 1 whenever precisely one of A and B is 1, and C will be 1 whenever A and B are both 1.
+- A /full-adder/ is composed of two half-adders and an or-gate. It is the basic circuit element used in adding two binary numbers.
+
+- **Quote** "In a language in which we can deal with procedures as objects, there is no fundamental difference between "procedures" and "data", we can choose our syntatic sugar to allow us to program in whatever style we choose."
+  - from footnote 27 in "Representing wires"
+**** Exercises
+***** 3.28
+#+BEGIN_SRC scheme
+(define (logical-or s1 s2)
+  (or (= s1 1) (= s2 1)))
+
+(define (or-gate a1 a2 output)
+  (define (or-action-procedure)
+    (let ((new-value
+           (logical-or (get-signal a1) (get-signal a2))))
+      (after-dealy or-gate-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! a1 or-action-procedure)
+  (add-action! a2 or-action-procedure)
+  'ok)
+#+END_SRC
+***** 3.29
+#+BEGIN_SRC scheme
+(define (or-gate->and-gates-and-inverters a1 a2 output)
+  (define (or-action-procedure)
+    (let ((c (make-wire))
+          (d (make-wire))
+          (e (make-wire)))
+      (inverter a1 c)
+      (inverter a2 d)
+      (and-gate c d e)
+      (inverter e output)))
+  (add-action! a1 or-action-procedure)
+  (add-action! a2 or-action-procedure))
+#+END_SRC
+The delay time for the above or-gate would at most be the combined delays of the function boxes, which are three inverters and an and-gate. So the delay or the or-gate is equal to ~(3 * inverter_delay) + and-delay~. Depending on if the initial input signals are set simultaneously the first inverter delay could happen at the same time which would result in a lower bound delay time of ~(2 * inverter_delay) + and-delay~.
+***** 3.30
+#+BEGIN_SRC scheme
+(define (ripple-carry-adder a-wires b-wires s-wires cin)
+  (let (cout (make-wire))
+    (if (null? a-wires)
+        'ok
+        (let ((fa (full-adder (car a-wires)
+                              (car b-wires)
+                              cin
+                              (car s-wires)
+                              cout)))
+          (ripple-carry-adder (cdr a-wires)
+                              (cdr b-wires)
+                              (cdr s-wires)
+                              cout)))))
+#+END_SRC
+The delay needed to obtain the complete result from an n-bit ripple-carry-adder would the the combined delay of n full-adders since each high-order bit adder needs to wait for the completion of the lower-order bit adder to provide the carry input signal. The delay of a full adder is two half-adders and an or-gate. The delay of a half-adder is two and-gates, one inverter and one or-gate. So the full delay in terms of gates and inverters would be:
+#+BEGIN_SRC
+delay = n * full-adder-delay
+full-adder-delay = (2 * half-adder-delay) + or-gate-delay
+half-adder-delay = (2 * and-gate-delay) + inverter-delay + or-gate-delay
+delay = n * (2 * ((2 * and-gate-delay) + inverter-delay + or-gate-delay) + or-gate-delay
+#+END_SRC
+***** 3.31
+We have to execute the procedure in ~accept-action-procedure!~ because if we do not we'll introduce extra delays into the system. When a procedure is added it can change the signal on the output wire which can then impact circuits downstream. If we do not execute this change immediately when the procedure is added we can end up with delayed processing times, or worse wrong data because the new state of the circuit will not have been fully updated the next time a procedure is run by ~the-agenda~.
+***** 3.32
+The procedures kept in a time segment queue have to be FIFO in order to preserve the proper event ordering and propagation through the circuit. If the procedures were executed as an ordinary list then events would not be executed in the proper order and the wrong signal would be sent on the output wires because the input signals would be carrying the wrong input. The expected inputs would be wrong because events would not be executed in the proper order.
+*** 3.3.5 Propagation of Constraints
+**** Exercises
+***** 3.33
+#+BEGIN_SRC scheme
+(define (averager a b c)
+  (let ((sum (make-connector))
+        (num-args (make-connector)))
+    (constant 2 num-args)
+    (adder a b sum)
+    (multiplier num-args c sum)))
+
+(define arg1 (make-connector))
+(define arg2 (make-connector))
+(define result (make-connector))
+(constant 3 arg1)
+(constant 5 arg2)
+(averager arg1 arg2 result)
+(has-value? result)
+(get-value result)
+#+END_SRC
+***** 3.34
+Defining a ~squarer~ as:
+#+BEGIN_SRC scheme
+(define (squarer a b)
+  (multiplier a a b))
+#+END_SRC
+I flawed because the same connector, ~a~, being used for both terminals on ~squarer~ constraint will result in the constraint failing to work because it will be unable to process a new value since none of the condition statements will execute, unless the value is set from an outside informant. If the value is set from an outside informant though it will never be unset in ~process-forget-value~ within the constraint device because the informant in the constraint device will be the device and not the outside user who initially set the value on the connector. Thus, the ~squarer~ constraint device can be used at most one time.z
+***** 3.35
+#+BEGIN_SRC scheme
+(define (squarer a b)
+  (define (process-new-value)
+    (if (has-value? b)
+        (if (< (get-value b) 0)
+            (error "square less than 0 -- SQUARER" (get-value b))
+            (set-value! a (sqrt (get-value b)) me))
+        (if (has-value? a)
+            (let ((a-val (get-value a)))
+              (set-value! b
+                          (* a-val a-val)
+                          me)))))
+  (define (process-forget-value)
+    (forget-value! a me)
+    (forget-value! b me)
+    (process-new-value))
+  (define (me request)
+    (cond ((eq? request 'I-have-a-value)
+           (process-new-value))
+          ((eq? request 'I-lost-my-value)
+           (process-forget-value))
+          (else
+           (error "Unknown request -- SQUARER" request))))
+  (connect a me)
+  (connect b me)
+  me)
+
+(define arg (make-connector))
+(define result (make-connector))
+(constant 3 arg)
+(squarer arg result)
+(has-value? result)
+(get-value result)
+#+END_SRC
+***** 3.36
+On paper
+***** 3.37
+#+BEGIN_SRC scheme
+(define (celsius-fahrenheit-converter x)
+  (c+ (c* (c/ (cv 9) (cv 5))
+          x)
+      (cv 32)))
+
+(define C (make-connector))
+(define F (celsius-fahrenheit-converter C))
+
+(define (c+ x y)
+  (let ((z (make-connector)))
+    (adder x y z)
+    z))
+
+(define (c- x y)
+  (let ((z (make-connector)))
+    (adder z y x)
+    z))
+(define (c* x y)
+  (let ((z (make-connector)))
+    (multiplier x y z)
+    z))
+(define (c/ x y)
+  (let ((z (make-connector)))
+    (multiplier z y x)
+    z))
+(define (cv x)
+  (let ((z (make-connector)))
+    (constant x z)
+    z))
+#+END_SRC
+** 3.4 Concurrency: Time is fo the Essence
+- The central issue lurking beneath the complexity of state, sameness, and change is that by introducing assignment we are forced to admit /time/ into our computational models.
+  - Before introducing assignment our programs were timeless, in the sense that any expression that has a value always has the same value
+- Even if the programs are to be executed on a sequential computer, the practice of writing programs as if they were to be executed concurrently forces the programmer to avoid inessential timing constraints and thus makes programs more modular.
+*** 3.4.1 The Nature of Time in Concurrent Systems
+- "Time is a device that was invented to keep everything from happening at once"
+- With concurrent processes we must be especially careful about assignments, because we may not be able to control the order of the assignments made by the different processes.
+**** Exercises
+***** 3.38
+a.
+100 + 10 - 20 - 45* = 45
+100 - 50* - 20 + 10 = 40
+100 - 20 - 40* + 10 = 50
+100 + 10 - 55* - 20 = 35
+- * denotes withdrawal of half the account
+b.
+Other values that could occur if the processes were interleaved would be:
+- 90, if the two withdrawals happen concurrently the balance could be set to 80 and "erase" the withdrawal of half the account, then the 10 deposit would increase to 90
+- 110 if the processes happen concurrently all reading the initial balance and the last ~set!~ to be executed is that of the deposit ~(set balance (+ initial-balance 10))~
+- Other values could be any combination of 1 or more of the transactions since we do not know how the processes are interleaved and which reads or writes could potentially be executed and written back to the balance.
+*** 3.4.2 Mechanisms for Controlling Concurrency
