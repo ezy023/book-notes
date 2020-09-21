@@ -1324,3 +1324,596 @@ v
   (let ((z (make-connector)))
     (constant x z)
     z))
+
+;; serializers
+(define (make-serializer)
+  (let ((mutex (make-mutex)))
+    (lambda (p)
+      (define (serialized-p . args)
+        (mutex 'acquire)
+        (let ((val (apply p args)))
+          (mutex 'release)
+          val))
+      serialized-p)))
+
+(define (make-mutex)
+  (let ((cell (list false)))
+    (define (the-mutex m)
+      (cond ((eq? m 'acquire)
+             (if (test-and-set! cell)
+                 (the-mutex 'acquire))) ; retry
+            ((eq? m 'release) (clear! cell))))
+    the-mutex))
+
+(define (clear! cell)
+  (set-car! cell false))
+
+;; this 'test-and-set!' is not sufficient as we need to guarantee it is performed atomically
+(define (test-and-set! cell)
+  (if (car cell)
+      true
+      (begin (set-car! cell true)
+             false)))
+
+;; An atomic implementation in MIT Scheme
+(define (test-and-set! cell)
+  (without-interrupts
+   (lambda ()
+     (if (car cell)
+         true
+         (begin (set-car! cell true)
+                false)))))
+
+(define (make-semaphore n)
+  (let ((count n)
+        (mutex (make-mutex)))
+    (define (the-semaphore m)
+      (cond ((eq? m 'acquire)
+             (mutex 'acquire)
+             (if (> count 0)
+                 (begin
+                   (set! count (- count 1))
+                   (mutex 'release))
+                 (begin
+                   (mutex 'release)
+                   ; this is a busy wait and in a single threaded environment will infinitely loop
+                   (the-semaphore 'acquire))))
+            ((eq? m 'release)
+             (mutex 'acquire)
+             (set! count (- count 1))
+             (mutex 'release))))
+    the-semaphore))
+
+(define my-sem (make-semaphore 3))
+(begin
+  (my-sem 'acquire)
+  (display "one") (newline)
+  (my-sem 'acquire)
+  (display "two") (newline)
+  (my-sem 'acquire)
+  (display "three") (newline)
+  (my-sem 'release)
+  (my-sem 'release)
+  (my-sem 'release))
+
+(define (make-semaphore n)
+  (let ((count n)
+        (cell (list false)))
+    (define (the-semaphore m)
+      (cond ((eq? m 'acquire)
+             (if (test-and-set! cell) ; acquire the lock
+                 (the-semaphore 'acquire)
+                 (if (> count 0)
+                     (begin
+                       (set! count (- count 1))
+                       (clear! cell))
+                     (the-semaphore 'acquire))))
+            ((eq? m 'release)
+             (if (test-and-set! cell)
+                 (the-semaphore 'release)
+                 (begin
+                   (set! count (+ count 1))
+                   (clear! cell))))))
+    the-semaphore))
+
+
+(define the-sem (make-semaphore 3))
+(begin
+  (the-sem 'acquire)
+  (display "one") (newline)
+  (the-sem 'acquire)
+  (display "two") (newline)
+  (the-sem 'acquire)
+  (display "three") (newline)
+  (the-sem 'acquire)
+  (display "four") (newline)
+  (the-sem 'acquire)
+  (display "five") (newline)
+  (the-sem 'release)
+  (the-sem 'release))
+
+
+;; Streams
+(define (stream-ref s n)
+  (if (= n 0)
+      (stream-car s)
+      (stream-ref (stream-cdr s) (- n 1))))
+
+(define (stream-map proc s)
+  (if (stream-null? s)
+      the-empty-stream
+      (cons-stream (proc (stream-car s))
+                   (stream-map  proc (stream-cdr s)))))
+
+(define (stream-for-each proc s)
+  (if (stream-null? s)
+      'done
+      (begin (proc (stream-car s))
+             (stream-for-each proc (stream-cdr s)))))
+
+(define (display-stream s)
+  (stream-for-each display-line s))
+
+(define the-empty-stream '())
+; cons-stream must be a special form to avoid the evaluation of the second argument
+(define (stream-car stream) (car stream))
+(define (stream-cdr stream) (force (cdr stream)))
+
+;; finding second prime in interval
+(stream-car
+ (stream-cdr
+  (stream-filter prime?
+                 (stream-enumerate-interval 10000 1000000))))
+
+(define (stream-enumerate-interval low high)
+  (if (> low high)
+      the-empty-stream
+      (cons-stream
+       low
+       (stream-enumerate-interval (+ low 1) high))))
+
+(define (stream-filter pred stream)
+  (cond ((stream-null? stream) the-empty-stream)
+        ((pred (stream-car stream))
+         (cons-stream (stream-car stream)
+                      (stream-filter pred
+                                     (stream-cdr stream))))
+        (else (stream-filter pred (stream-cdr stream)))))
+
+(define (memo-proc proc)
+  (let ((already-run? false) (result false))
+    (lambda ()
+      (if (not already-run?)
+          (begin (set! result (proc))
+                 (set! already-run? true)
+                 result)
+          result))))
+
+(define (stream-map proc . argstreams)
+  (if (stream-null? (car argstreams))
+      the-empty-stream
+      (cons-stream
+       (apply proc (map stream-car argstreams))
+       (apply stream-map
+              (cons proc (map stream-cdr argstreams))))))
+
+(define (display-line x)
+  (display x) (newline))
+
+(define (show x)
+  (display-line x)
+  x)
+
+(define x (stream-map show (stream-enumerate-interval 0 10)))
+(stream-ref x 5)
+(stream-ref x 7)
+
+(define sum 0)
+(define (accum x)
+  (set! sum (+ x sum))
+  sum)
+
+(define seq (stream-map accum (stream-enumerate-interval 1 20)))
+(define y (stream-filter even? seq))
+(define z (stream-filter (lambda (x) (= (remainder x 5) 0))
+                         seq))
+
+(stream-ref y 7)
+(display-stream z)
+sum
+
+(define (integers-starting-from n)
+  (cons-stream n (integers-starting-from (+ n 1))))
+
+(define (divisible? x y) (= (remainder x y) 0))
+
+(define (sieve stream)
+  (cons-stream
+   (stream-car stream)
+   (sieve (stream-filter
+           (lambda (x)
+             (not (divisible? x (stream-car stream))))
+           (stream-cdr stream)))))
+
+(define primes (sieve (integers-starting-from 2)))
+(stream-ref primes 50)
+
+(define ones (cons-stream 1 ones))
+(define (add-streams s1 s2)
+  (stream-map + s1 s2))
+(define integers (cons-stream 1 (add-streams ones integers)))
+
+(define fibs
+  (cons-stream 0
+               (cons-stream 1
+                            (add-streams (stream-cdr fibs)
+                                         fibs))))
+
+(define (scale-stream stream factor)
+  (stream-map (lambda (x) (* x factor)) stream))
+
+(define double (cons-stream 1 (scale-stream double 2)))
+
+(define primes
+  (cons-stream
+   2
+   (stream-filter prime? (integers-starting-from 3))))
+;; recursive definition because 'primes is defined in terms of 'prime?' which itself relies on the `primes` stream
+(define (prime? n)
+  (define (iter ps)
+    (cond ((> (square (stream-car ps)) n) true)
+          ((divisible? n (stream-car ps)) false)
+          (else (iter (stream-cdr ps)))))
+  (iter primes))
+
+
+(define (mul-streams s1 s2)
+  (stream-map * s1 s2))
+
+(define integers (cons-stream 1 (add-streams ones integers)))
+(define factorials (cons-stream 1 (mul-streams factorials integers)))
+
+(stream-ref factorials 3) ; 6
+(stream-ref factorials 5) ; 120
+
+
+(define (partial-sums s)
+  (cons-stream (stream-car s)
+               (add-streams (stream-cdr s)
+                            (partial-sums s))))
+
+(define partial-ints (partial-sums integers))
+(stream-ref partial-ints 4)
+
+
+(define (merge s1 s2)
+  (cond ((stream-null? s1) s2)
+        ((stream-null? s2) s1)
+        (else
+         (let ((s1car (stream-car s1))
+               (s2car (stream-car s2)))
+           (cond ((< s1car s2car)
+                  (cons-stream s1car (merge (stream-cdr s1) s2)))
+                 ((> s1car s2car)
+                  (cons-stream s2car (merge s1 (stream-cdr s2))))
+                 (else
+                  (cons-stream s1car
+                               (merge (stream-cdr s1)
+                                      (stream-cdr s2)))))))))
+
+(define S (cons-stream 1 (merge (scale-stream S 2)
+                                (merge (scale-stream S 3)
+                                       (scale-stream S 5)))))
+
+
+(define (expand num den radix)
+  (cons-stream
+   (quotient (* num radix) den)
+   (expand (remainder (* num radix) den) den radix)))
+
+(expand 1 7 10)
+(expand 3 8 10)
+(stream-ref (expand 3 8 10) 0)
+(stream-ref (expand 2 1 2) )
+
+;; from chap 1
+(define (average x y)
+  (/ (+ x y) 2))
+(define (sqrt-improve guess x)
+  (average guess (/ x guess)))
+
+(define (sqrt-stream x)
+  (define guesses
+    (cons-stream 1.0
+                 (stream-map (lambda (guess)
+                               (sqrt-improve guess x))
+                             guesses)))
+  guesses)
+
+
+(define (make-tableau transform s)
+  (cons-stream s
+               (make-tableau transform
+                             (transform s))))
+(define (accelerated-sequence transform s)
+  (stream-map stream-car
+              (make-tableau transform s)))
+
+(define (stream-limit s tol)
+  (let ((s1 (stream-ref s 0))
+        (s2 (stream-ref s 1)))
+    (if (< (abs (- s1 s2)) tol)
+        s2
+        (stream-limit (stream-cdr s) tol))))
+
+(define (sqrt x tolerance)
+  (stream-limit (sqrt-stream x) tolerance))
+(sqrt 2 0.001)
+(stream-ref (sqrt-stream 2) 2)
+
+(stream-filter (lambda (pair)
+                 (prime? (+ (car pair) (cadr pair))))
+
+               int-pairs)
+
+
+
+(define (interleave s1 s2)
+  (if (stream-null? s1)
+      s2
+      (cons-stream (stream-car s1)
+                   (interleave s2 (stream-cdr s1)))))
+
+(define (pairs s t)
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (interleave
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (pairs (stream-cdr s) (stream-cdr t)))))
+
+(define (display-line x)
+  (display x) (newline))
+(define (show-stream s limit)
+  (define (display-iter st count)
+    (if (> count limit)
+        'done
+        (begin
+          (display-line (stream-car st))
+          (display-iter (stream-cdr st) (+ count 1)))))
+  (display-iter s 0))
+
+(define integers
+  (cons-stream 1 (stream-map (lambda (x) (+ x 1))
+                             integers)))
+
+(stream-ref (pairs integers integers) 5)
+(show-stream (pairs integers integers) 10)
+
+
+
+(define (triples a b c)
+  (cons-stream
+   (list (stream-car a) (stream-car b) (stream-car c))
+   (interleave
+    (stream-map (lambda (x)
+                  (append (list (stream-car a)) x))
+                (pairs b c))
+    (triples (stream-cdr a) (stream-cdr b) (stream-cdr c)))))
+
+
+(define triple-stream (triples integers integers integers))
+(show-stream triple-stream 10)
+
+(define pythagorean-triples
+  (stream-filter (lambda (t)
+                   (= (+ (square (car t)) (square (cadr t)))
+                      (square (caddr t))))
+                 trips))
+
+(show-stream pythagorean-triples 5)
+
+(define (merge s1 s2)
+  (cond ((stream-null? s1) s2)
+        ((stream-null? s2) s1)
+        (else
+         (let ((s1car (stream-car s1))
+               (s2car (stream-car s2)))
+           (cond ((< s1car s2car)
+                  (cons-stream s1car (merge (stream-cdr s1) s2)))
+                 ((> s1car s2car)
+                  (cons-stream s2car (merge s1 (stream-cdr s2))))
+                 (else
+                  (cons-stream s1car
+                               (merge (stream-cdr s1)
+                                      (stream-cdr s2)))))))))
+
+(define (merge-weighted s1 s2 weight)
+  (cond ((stream-null? s1) s2)
+        ((stream-null? s2) s1)
+        (else
+         (let ((s1car (stream-car s1))
+               (s2car (stream-car s2)))
+           (let ((w1 (weight s1car))
+                 (w2 (weight s2car)))
+             ;; if we instead use an 'else' case as we do in 'merge' then we skip over valid values in the s2 stream
+             ;; since equal weights can be created from different pairs, e.g. weight 5 from (1 4) and (2 3)
+             (cond ((<= w1 w2)
+                    (cons-stream s1car
+                                 (merge-weighted
+                                  (stream-cdr s1)
+                                  s2
+                                  weight)))
+                   ((> w1 w2)
+                    (cons-stream s2car
+                                 (merge-weighted
+                                  s1
+                                  (stream-cdr s2)
+                                  weight)))))))))
+
+(define (weighted-pairs s1 s2 weight)
+  (cons-stream
+   (list (stream-car s1) (stream-car s2))
+   (merge-weighted
+    (stream-map (lambda (x)
+                  (list (stream-car s1) x))
+                (stream-cdr s2))
+    (weighted-pairs (stream-cdr s1) (stream-cdr s2) weight)
+    weight)))
+
+(define a (weighted-pairs integers integers (lambda (x) (apply + x))))
+
+(define (div-2-3-5 n)
+  (or (= 0 (remainder n 2))
+      (= 0 (remainder n 3))
+      (= 0 (remainder n 5))))
+
+(define b (stream-filter
+           (lambda (p)
+             (let ((i (car p))
+                   (j (cadr p)))
+               (and (not (div-2-3-5 i))
+                    (not (div-2-3-5 j)))))
+           (weighted-pairs integers integers
+                           (lambda (p)
+                             (let ((i (car p))
+                                   (j (cadr p)))
+                               (+ (* i 2) (* j 3) (* i j 5)))))))
+
+(show-stream a 10)
+(show-stream b 10)
+
+(define (cube n)
+  (* n n n))
+(define (stream-search s weight)
+  (if (= (weight (stream-car s))
+         (weight (stream-car (stream-cdr s))))
+      (cons-stream
+       (weight (stream-car s))
+       (stream-search (stream-cdr s) weight))
+      (stream-search (stream-cdr s) weight)))
+(define (cube-weight p)
+  (let ((i (car p))
+        (j (cadr p)))
+    (+ (cube i)
+       (cube j))))
+
+(define ramanujan-numbers
+  (stream-search
+   (weighted-pairs integers integers cube-weight)
+   cube-weight))
+
+(show-stream ramanujan-numbers 6)
+
+
+(define (integral integrand initial-value dt)
+  (define int
+    (cons-stream initial-value
+                 (add-streams (scale-stream integrand dt)
+                              int)))
+  int)
+
+(define (RC R C dt)
+  (define (proc i v0)
+    (cons-stream
+     v0
+     (add-streams (scale-stream i R)
+                  (integral (scale-stream i (/ 1 C))
+                            v0
+                            dt))))
+  proc)
+(define RC1 (RC 5 1 0.5))
+(show-stream (RC1 integers 0.2) 10)
+
+
+(define (make-zero-crossings input-stream last-value)
+  (cons-stream
+   (sign-change-detector (stream-car input-stream) last-value)
+   (make-zero-crossings (stream-cdr input-stream)
+                        (stream-car input-stream))))
+(define zero-crossings (make-zero-crossings sense-data 0))
+
+(define zero-crossings
+  (stream-map sign-change-detector sense-data (cons-stream 0 sense-data)))
+
+
+(define (make-zero-crossings input-stream last-value last-average)
+  (let ((avpt (/ (+ (stream-car input-stream) last-value) 2)))
+    (cons-stream (sign-change-detector avpt last-average)
+                 (make-zero-crossings (stream-cdr input-stream)
+                                      (stream-car input-stream)
+                                      avpt))))
+
+
+(define (smooth input-stream last-value)
+  (define (average x y)
+    (/ (+ x y) 2))
+  (let ((average-val (average (stream-car input-stream) last-value)))
+    (cons-stream average-val
+                 (smooth (stream-cdr input-stream) (stream-car input-stream)))))
+
+(show-stream (smooth integers 0) 10)
+
+(define (make-zero-crossings source-signal smooth)
+  (define (check-zero-crossings input-stream last-value)
+    (cons-stream (sign-change-detector (stream-car input-stream) last-value)
+                 (check-zero-crossings (stream-cdr input-stream) (stream-car input-stream))))
+  (check-zero-crossings (smooth source-signal) 0))
+
+;; 3.5.4
+(define (integral delayed-integrand initial-value dt)
+  (define int
+    (cons-stream initial-value
+                 (let ((integrand (force delayed-integrand)))
+                   (add-streams (scale-stream integrand dt)
+                                int))))
+  int)
+
+(define (solve f y0 dt)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (stream-map f y))
+  y)
+
+(stream-ref (solve (lambda (y) y) 1 0.001) 1000)
+
+(define (integral delayed-integrand initial-value dt)
+  (cons-stream initial-value
+               (let ((integrand (force delayed-integrand)))
+                 (if (stream-null? integrand)
+                    the-empty-stream
+                    (integral (delay (stream-cdr integrand))
+                              (+ (* dt (stream-car integrand))
+                                 initial-value)
+                              dt)))))
+
+(stream-ref (solve (lambda (y) y) 1 0.001) 1000)
+
+(define (solve-2nd a b dt y0 dy0)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (integral (delay ddy) dy0 dt))
+  (define ddy (add-streams (scale-stream dy a)
+                           (scale-stream y b)))
+  y)
+
+(stream-ref (solve-2nd 1 0 0.001 1 1) 1000)
+
+(define (solve-2nd f dt y0 dy0)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (integral (delay ddy) dy0 dt))
+  (define ddy (stream-map f dy y))
+  y)
+
+(define (RLC R L C dt)
+  (define (proc vC0 iL0)
+    (define vC (integral (delay dvC) vC0 dt))
+    (define iL (integral (delay diL) iL0 dt))
+    (define dvC (scale-stream iL (/ -1 C)))
+    (define diL (add-streams (scale-stream iL (/ (* R -1) L))
+                            (scale-stream vC (/ 1 L))))
+    (cons vC iL))
+  proc)
+
+(define test-RLC (RLC 1 1 0.2 0.1))
+(define str-pairs (test-RLC 10 0))
+(stream-ref (car str-pairs) 5)
+(stream-ref (cdr str-pairs) 5)
