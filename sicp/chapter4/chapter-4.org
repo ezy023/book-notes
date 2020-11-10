@@ -1,0 +1,1721 @@
+* Chapter 4 - Metalinguistic Abstraction
+- /Metalinguistic abstraction/ -- establishing new languages -- plays an important role in all branches of engineering design.
+  - It is particularly important to computer programming because in programming not only can we formulate new languages but we can also implement these languages by constructing evaluators.
+- An /evaluator/ (or /interpreter/) for a programming language is a procedure that, when applied to an expression of the language, performs the actions required to evaluate that expression.
+  - "The evaluator, which determines the meaning of expressions in a programming language, is just another program"
+- /nondeterministic computing/ - expressions have many values, rather than just a single value.
+- /logic-programming/ - a language in which knowledge is expressed in terms of relations, rather than in terms of computations with inputs and outputs.
+** 4.1 The Metacircular Evaluator
+- An evaluator that is written in the same language that it evaluates is said to be /metacircular/
+- The job of the evaluator is not to specify the primitives of the language, but rather to provide the connective tissue -- the means of combination and the means of abstraction -- that binds a collection of primitives to form a language.
+  - The evaluator choreographs procedure composition so that nested procedures are reduced appropriately before being passed to primitive operations
+  - The evaluator allows us to use variables by keeping track of variable definitions and obtaining their values before invoking procedures.
+  - The evaluator allows us to define compound procedures. This involves keeping track of procedure definitions, knowing how to use these definitions in evaluating expressions, and providing a mechanism that enables procedures to accept arguments.
+  - The evaluator provides the special forms, which must be evaluated differently from procedure calls.
+*** 4.1.1 The Core of the Evaluator
+- The evaluation process can be described as the interplay between two procedures: ~eval~ and ~apply~
+**** Eval
+- ~eval~ takes as arguments an expression and an environment. It classifies the expression and directs its evaluation.
+- Definition of ~eval~
+  #+BEGIN_SRC scheme
+  (define (eval exp env)
+    (cond ((self-evaluating? exp) exp)
+          ((variable? exp) (lookup-variable-value exp env))
+          ((quoted? exp) (text-of-quotation exp))
+          ((assignment? exp) (eval-assignment exp env))
+          ((definition? exp) (eval-definition exp env))
+          ((if? exp) (eval-if exp env))
+          ((lambda? exp)
+           (make-procedure (lambda-parameters exp)
+                           (lambda-body exp)
+                           env))
+          ((begin? exp)
+           (eval-sequence (begin-actions exp) env))
+          ((cond? exp) (eval (cond->if exp) exp))
+          ((application? exp)
+           (apply (eval (operator exp) env)
+                  (list-of-values (operands exp) env)))
+          (else
+           (error "Unknown expression type -- EVAL" exp))))
+  #+END_SRC
+**** Apply
+- ~apply~ takes two arguments, a procedure and a list of arguments to which the procedure should be applied.
+#+BEGIN_SRC scheme
+(define (apply procedure arguments)
+  (cond ((primitive-procedure? procedure)
+         (apply-primitive-procedure procedure arguments))
+        ((compound-procedure? procedure)
+         (eval-sequence
+          (procedure-body procedure)
+          (extend-environment
+           (procedure-parameters procedure)
+           arguments
+           (procedure-environment procedure))))
+        (else
+         (error
+          "Unknown procedure type -- APPLY" procedure))))
+#+END_SRC
+**** Procedure arguments
+- When ~eval~ processes a procedure application, it uses ~list-of-values~ to produce the list of arguments to which the procedure is to be applied.
+- ~list-of-values~ takes as an argument the operands of the combination, evaluates each and returns a list of the corresponding values.
+#+BEGIN_SRC scheme
+(define (list-of-values exps env)
+  (if (no-operands? exps)
+      '()
+      (cons (eval (first-operand exps) env)
+            (list-of-values (rest-operands exps) env))))
+#+END_SRC
+**** Conditionals
+- ~eval-if~ evaluates the predicate part of an if expression. If the result is true it evaluates the consequent, otherwise it evaluates the alternative.
+#+BEGIN_SRC scheme
+(define (eval-if exp env)
+  (if (true? (eval (if-predicate exp) env))
+      (eval (if-consequent exp) env)
+      (eval (if-alternative exp) env)))
+#+END_SRC
+**** Sequences
+- ~eval-sequence~ is used by ~apply~ to evaluate the sequence of expressions in a procedure body, and by ~eval~ to evaluate the sequence of expressions in a ~begin~ expression.
+#+BEGIN_SRC scheme
+(define (eval-sequence exps env)
+  (cond ((last-exp? exps) (eval (first-exp exps) env))
+        (else (eval (first-exp exps) env)
+              (eval-sequence (rest-exps exps) env))))
+#+END_SRC
+**** Assignments and definitions
+#+BEGIN_SRC scheme
+(define (eval-assignment exp env)
+  (set-variable-value! (assignment-variable exp)
+                       (eval (assignment-value exp) env)
+                       env)
+  'ok)
+
+(define (eval-definition exp env)
+  (define-variable! (definition-variable exp)
+    (eval (definition-value exp) env)
+    env)
+  'ok)
+#+END_SRC
+**** Exercises
+***** 4.1
+#+BEGIN_SRC scheme
+(define (list-of-values-l-r exps env)
+  (if (no-operands? exp)
+      '()
+      (let (lval (eval (first-operand exps) env))
+        (cons lval (list-of-values (rest-operands exps) env)))))
+
+(define (list-of-values-r-l exps env)
+  (if (no-operands? exp)
+      '()
+      (let ((rval (list-of-values (rest-operands exps) env)))
+        (cons (eval (first-operand exps) env) rval))))
+#+END_SRC
+*** 4.1.2 Representing Expressions
+- We use data abstraction to decouple the general rules of operation from the details of how expressions are represented.
+**** Derived expressions
+- Some special forms in our language can be defined in terms of expressions involving other special forms, rather than being implemented directly.
+  - For example, ~cond~ as a nest of ~if~ expressions
+  #+BEGIN_SRC scheme
+  (cond ((> x 0) x)
+        ((= x 0) (display 'zero) 0)
+        (else (- x)))
+
+  ;; can be transformed to
+  (if (> x 0)
+      x
+      (if (= x 0)
+          (begin
+            (display 'zero)
+            0)
+          (- x)))
+  #+END_SRC
+  - This simplifies the evaluator by reducing the number of special forms that need to be explicitly specified.
+- Expressions that we choose to implement as syntactic transformations are called /derived expressions/
+- **NOTE** Practical Lisp systems provide a mechanism that allows a user to add new derived expressions and specify their implementation as syntactic transformations without modifying the evaluator. These user-defined transformations all called /macros/
+**** Exercises
+***** 4.2
+****** a
+Due to the way ~application?~ is defined it will match man unintended procedures. The example ~(define x 3)~ is clearly a definition procedure, but since the ~application?~ predicate only looks for pairs it will match and attempt to evaluate the procedure by applying ~define~ to ~x~ and ~3~, resulting in an error trying to ~apply~ a special form.
+****** b
+First we need to redefine the ~application?~ predicate to look for ~'call~ at the beginning of procedures. Then we'll need to modify the ~operator~ and ~operands~ procedure to properly extract the procedure to apply and the arguments to apply it to from the expression.
+#+BEGIN_SRC scheme
+(define (application? exp)
+  (tagged-list exp 'call))
+(define (operator exp)
+  (cadr exp))
+(define (operands exp)
+  (cddr exp))
+#+END_SRC
+***** 4.3
+#+BEGIN_SRC scheme
+(define (eval exp env)
+  (put 'quote 'text-of-quotation)
+  (put 'set! 'eval-assignment)
+  (put 'define 'eval-definition)
+  (put 'if 'eval-if)
+  (put 'lambda '(lambda (e)
+                  (make-procedure (lambda-parameters e)
+                                  (lambda-body e)
+                                  env)))
+  (put 'begin '(lambda (e) (eval-sequence (begin-actions exp) env)))
+  (put 'cond '(lambda (e) (eval (cond->if e) env)))
+  ;; assuming we stick with the 'call' usage from ex 4.2 as that makes this simpler
+  (put 'call '(lambda (e) (apply (eval (operator exp) env)
+                                 (list-of-values (operands exp) env))))
+  (define (procedure-tag exp)
+    (car exp))
+  (define (dispatch m)
+    (if (self-evaluating? exp)
+        exp
+        (let ((proc (get m)))
+          (if (not (null? proc))
+              (proc exp)
+              (error "Unknow expression type -- EVAL" exp)))))
+  (dispatch (procedure-tag m)))
+#+END_SRC
+***** 4.4
+#+BEGIN_SRC scheme
+(define (true? exp)
+  (eq? #t exp))
+
+(define (and? exp) (tagged-list exp 'and))
+(define (and-predicates exp) (cdr exp))
+(define (eval-and seq env)
+  (if (null? seq)
+      #t
+      (if (last-exp? seq)
+          (if (true? (eval (first-exp seq) env))
+              (eval (first-exp seq) env)
+              #f)
+          (if (true? (eval (first-exp seq) env))
+              (eval-and (rest-exps seq) env)
+              #f))))
+
+(define (or? exp) (tagged-list exp 'or))
+(define (or-predicates exp) (cdr exp))
+(define (eval-or seq env)
+  (if (null? seq)
+      #f
+      (if (last-exp? seq)
+          (if (true? (eval (first-exp seq) env))
+              #t
+              #f)
+          (if (true? (eval (first-exp seq) env))
+              #t
+              (eval-or (rest-exps seq) env)))))
+
+(define (eval exp env)
+  (cond ((self-evaluating? exp) exp)
+        ;; ...
+        ;; add 'and' and 'or'
+        ((and? exp) (eval-and (and-predicates exp) env))
+        ((or? exp) (eval-or (or-predicates) env))
+        ;; ...
+        (else
+         (error "Unknown expression type -- EVAL" exp))))
+
+(eval-and (and-predicates '(and (> 1 0) (= 2 2) (< 2 3))) (the-environment))
+(eval-and (and-predicates '(and (> 1 0) (= 2 3) (< 2 3))) (the-environment))
+(eval-or (or-predicates '(or (> 0 1) (= 2 2) (< 3 2))) (the-environment))
+(eval-or (or-predicates '(or (> 0 1) (= 2 3) (< 3 2))) (the-environment))
+#+END_SRC
+Alternatively, defining ~and~ and ~or~ as derived expressions
+#+BEGIN_SRC scheme
+(define (and->if exp)
+  (expand-and-predicates (and-predicates exp)))
+(define (expand-and-predicates predicates)
+  (let ((first (first-exp predicates))
+        (rest (rest-exps predicates)))
+    (if (null? rest)
+        (make-if first #t #f)
+        (make-if first (expand-and-predicates (cdr predicates)) #f))))
+
+(define (or->if exp)
+  (expand-or-predicates (or-predicates exp)))
+(define (expand-or-predicates predicates)
+  (let ((first (first-exp predicates))
+        (rest (rest-exps predicates)))
+    (if (null? rest)
+        (make-if first #t #f)
+        (make-if first #t (expand-or-predicates (cdr predicates))))))
+
+(define (derived-eval-and exp env)
+  (eval (and->if exp) env))
+
+(define (derived-eval-or exp env)
+  (eval (or->if exp) env))
+
+(derived-eval-and (and-predicates '(and (> 1 0) (= 2 2) (< 2 3))) (the-environment))
+(derived-eval-and (and-predicates '(and (> 1 0) (= 2 3) (< 2 3))) (the-environment))
+(derived-eval-or (or-predicates '(or (> 0 1) (= 2 2) (< 3 2))) (the-environment))
+(derived-eval-or (or-predicates '(or (> 0 1) (= 2 3) (< 3 2))) (the-environment))
+#+END_SRC
+***** 4.5
+The addition to the set of ~cond~ procedures and the modification to ~expand-clauses~
+#+BEGIN_SRC scheme
+(define (arg-pass-syntax? clause)
+  (eq? (cadr clause) '=>))
+(define (arg-pass-action clause)
+  (caddr clause))
+
+(define (expand-clauses clauses)
+  (if (null? clauses)
+      'false
+      (let ((first (car clauses))
+            (rest (cdr clauses)))
+        (if (cond-else-clause? first)
+            (if (null? rest)
+                (sequence->exp (cond-actions first))
+                (error "ELSE clause isn't last --  COND->IF"
+                       clauses))
+            (if (arg-pass-syntax? first)
+                (make-if (cond-predicate first)
+                         (list (arg-pass-action first) (cond-predicate first))
+                         (expand-clauses rest))
+                (make-if (cond-predicate first)
+                         (sequence->exp (cond-actions first))
+                         (expand-clauses rest)))))))
+
+(define cond-key 'e)
+(define cond-check
+  '(cond ((assoc cond-key '((a 1) (b 2) (c 3))) => cadr)
+         ((eq? cond-key 'd) => (lambda (arg)
+                                 (display "Key is 'd ")
+                                 (display "arg is ") (display arg)))
+         ((eq? cond-key 'e)
+          (display "Key is 'e"))))
+
+(eval (cond->if cond-check) (the-environment))
+#+END_SRC
+***** 4.6
+#+BEGIN_SRC scheme
+(define (let-expressions exp)
+  (cadr exp))
+(define (let-var-names exp)
+  (map car (let-expressions exp)))
+(define (let-var-exps exp)
+  (map cadr (let-expressions exp)))
+(define (let-body exp)
+  (caddr exp))
+(define (let->combination exp)
+  (cons
+   (make-lambda (let-var-names exp) (list (let-body exp)))
+   (let-var-exps exp)))
+
+(define (eval exp env)
+  (cond ((self-evaluating? exp) exp)
+        ((variable? exp) (lookup-variable-value exp env))
+        ;; ...
+        ((let? exp) (let->combination exp))
+        ((lambda? exp)
+         (make-procedure (lambda-parameters exp)
+                         (lambda-body exp)
+                         env))
+        ;; ....
+        (else
+         (error "Unknown expression type -- EVAL" exp))))
+#+END_SRC
+***** 4.7
+A ~let*~ procedure can be rewritten as a set of nested ~let~ expressions by transforming the sequence of expressions; taking the ~car~ of the sequence and using that in an outer ~let~, then recursively evaluating the procedure on the ~cdr~ of the sequence. The last step is to execute the ~let*~ body in the body of the final ~let~ procedure.
+#+BEGIN_SRC scheme
+(define (let*->nested-lets exp)
+  (define (transform let-exps let-body)
+    (if (null? (cdr let-exps))
+        (list 'let (list (car let-exps)) let-body)
+        (list 'let (list (car let-exps)) (transform (cdr let-exps) let-body))))
+  (transform (let-expressions exp) (let-body exp)))
+#+END_SRC
+
+We can evaluate the transformation directly with ~(eval (let*->nested-lets exp) env)~, similar to how we evaluate a ~cond~ expression, by adding a check for the ~let*~ special form
+#+BEGIN_SRC scheme
+(define (eval exp env)
+  (cond ((self-evaluating? exp) exp)
+        ;; ...
+        ((let*? exp) (eval (let*->nested-lets exp) env))
+        ;; ...
+        ((cond? exp) (eval (cond->if exp) env))
+        (else
+         (error "Unknown expression type -- EVAL" exp))))
+#+END_SRC
+***** 4.8
+Unfinished and not correct, but I'm moving ahead
+#+BEGIN_SRC scheme
+(define (make-let variables body)
+  (list 'let (list variables) body))
+(define (named-let-name exp)
+  (cadr exp))
+(define (named-let? exp)
+  (not (pair? (cadr exp))))
+(define (named-let-bindings exp)
+  (caddr exp))
+(define (named-let-body exp)
+  (cadddr exp))
+
+(define (named-let->combination exp)
+  (make-let (list
+             (named-let-name exp)
+             (make-lambda (map car (named-let-bindings exp))
+                          (list (named-let-body exp))))
+            (cons (named-let-name exp)
+                  (map cadr (named-let-bindings exp)))))
+
+(define (let->combination exp)
+  (if (named-let? exp)
+      (named-let->combination exp)
+      (cons
+       (make-lambda (let-var-names exp) (list (let-body exp)))
+       (let-var-exps exp))))
+
+(define fib '(let fib-iter ((a 1)
+                            (b 0)
+                            (count 10))
+               (if (= count 0)
+                   b
+                   (fib-iter (+ a b) a (- count 1)))))
+
+(let->combination fib)
+#+END_SRC
+***** 4.9
+#+BEGIN_SRC scheme
+;; while
+(define (while? exp)
+  (tagged-list? exp 'while))
+(define (while-predicate exp)
+  (cadr exp))
+(define (while-body exp)
+  (cddr exp))
+
+(define (while->if exp)
+  (make-if (while-predicate exp)
+           (sequence->exp (append (while-body exp) (list exp)))
+           '()))
+(define (eval exp env)
+  (cond ((self-evaluating? exp) exp)
+        ((if? exp) (eval-if exp env))
+        ;; ...
+        ((while? exp) (eval (while->if exp) env))
+        (else
+         (error "Unknown expression type -- EVAL" exp))))
+
+;; until
+(define (until? exp)
+  (tagged-list? exp 'until))
+(define (until-predicate exp)
+  (cadr exp))
+(define (until-body exp)
+  (cddr exp))
+
+(define (until->if exp)
+  (make-if (list 'not (until-predicate exp))
+           (sequence->exp (append (until-body exp) (list exp)))
+           '()))
+
+(define (eval exp env)
+  (cond ((self-evaluating? exp) exp)
+        ;; ..
+        ((until? exp) (eval (until->if exp) env))
+        (else
+         (error "Unknown expression type -- EVAL" exp))))
+
+(define test-until
+  '(until (< x 0)
+          (display x)
+          (display " is larger than 0")
+          (newline)
+          (set! x (- x 1))))
+
+(until->if test-until)
+
+(if (not (< x 0))
+    (begin
+      (display x)
+      (display " is larger than 0")
+      (newline)
+      (set! x (- x 1))
+      (until (< x 0)
+             (display x)
+             (display " is larger than 0")
+             (newline)
+             (set! x (- x 1))))
+    ())
+#+END_SRC
+***** 4.10
+Skipped
+*** 4.1.3 Evaluator Data Structures
+- The evaluator implementation must also define the data structures that the evaluator manipulates internally, such as the representation of procedures and environments and the representation of true and false.
+**** Operations on Environments
+- An environment is a sequence of frames where each frame is a table of binds that associate variables with their corresponding values.
+#+BEGIN_SRC scheme
+(define (enclosing-environment env) (cdr env))
+(define (first-frame env) (car env))
+(define the-empty-environment '())
+
+(define (make-frame variables values)
+  (cons variables values))
+(define (frame-variables frame) (car frame))
+(define (frame-values frame) (cdr frame))
+(define (add-binding-to-frame! var val frame)
+  (set-car! frame (cons var (car frame)))
+  (set-cdr! frame (cons val (cdr frame))))
+
+(define (extend-environment vars vals base-env)
+  (if (= (length vars) (length vals))
+      (cons (make-frame vars vals) base-env)
+      (if (< (length vars) (length vals))
+          (error "Too many arguments supplied" vars vals)
+          (error "Too few arguments supplied" vars vals))))
+
+(define (lookup-variable-value var env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop (enclosing-environment env)))
+            ((eq? var (car vars))
+             (car vals))
+            (else (scan (cdr vars) (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable" var)
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+
+(define (set-variable-value! var val env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop (enclosing-environment env)))
+            ((eq? var (car vars))
+             (set-car! vals val))
+            (else (scan (cdr vars) (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable -- SET!" var)
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+
+(define (define-variable! var val env)
+  (let ((frame (first-frame env)))
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (add-binding-to-frame! var val frame))
+            ((eq? var (car vars))
+             (set-car! vals val))
+            (else (scan (cdr vars) (cdr vals)))))
+    (scan (frame-variables frame)
+          (frame-values frame))))
+#+END_SRC
+**** Exercises
+***** 4.11
+#+BEGIN_SRC scheme
+(define (make-frame variables values)
+  (if (null? variables)
+      '()
+      (cons (cons (car variables) (car values))
+            (make-frame (cdr variables) (cdr values)))))
+(define (add-binding-to-frame var val frame)
+  (set-car! frame (cons (cons var val) (car frame)))
+
+(define (first-binding frame)
+  (car frame))
+(define (rest-bindings frame)
+  (cdr frame))
+(define (binding-var binding)
+  (car binding))
+(define (binding-val binding)
+  (cdr binding))
+
+
+(define (lookup-variable-value var env)
+  (define (env-loop env)
+    (define (scan frame)
+      (cond ((null? frame)
+             (env-loop (enclosing-env env)))
+            ((eq? (binding-var (first-binding frame)) var)
+             (binding-val (first-binding frame)))
+            (else (scan (rest-bindings frame)))))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable" var)
+        (let ((frame (first-frame env)))
+          (scan frame))))
+  (env-loop env))
+
+(define (set-variable-value! var val env)
+  (define (env-loop env)
+    (define (scan frame)
+      (cond ((null? frame)
+             (env-loop (enclosing-env env)))
+            ((eq? (binding-var (first-binding frame)) var)
+             (set-cdr! (first-binding frame) val))
+            (else (scan (rest-bindings frame)))))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable -- SET!" var)
+        (let ((frame (first-frame env)))
+          (scan frame))))
+  (env-loop env))
+
+(define (define-variable! var val env)
+  (define (scan frame)
+    (cond ((null? frame)
+           (add-binding-to-frame! var val frame))
+          ((eq? (binding-var (first-binding frame)) var)
+           (set-cdr! (first-binding frame) val))
+          (else (scan (rest-bindings frame)))))
+  (scan (first-frame env)))
+#+END_SRC
+***** 4.12
+#+BEGIN_SRC scheme
+(define the-empty-var '())
+
+(define (find-var var frame)
+  (define (scan variables)
+    (display "looking ") (display variables) (newline)
+    (cond ((null? variables)
+           the-empty-var)
+          ((eq? (binding-var (first-binding variables))
+                var)
+           (first-binding variables))
+          (else (scan (rest-bindings variables)))))
+  (scan frame))
+
+(define (lookup-variable-value var env)
+  (define (env-loop env)
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable" var)
+        (let ((binding (find-var var (first-frame env))))
+          (if (eq? binding the-empty-var)
+              (env-loop (enclosing-environment env))
+              (binding-val binding)))))
+  (env-loop env))
+
+(define (set-variable-value! var val env)
+  (define (env-loop env)
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable -- SET!" var)
+        (let ((binding (find-var var (first-frame env))))
+          (if (eq? binding the-empty-var)
+              (env-loop (enclosing-environment env))
+              (set-cdr! binding val)))))
+  (env-loop env))
+
+(define (define-variable! var val env)
+  (let ((frame (first-frame env)))
+    (let ((binding (find-var var frame)))
+      (if (eq? binding the-empty-var)
+          ;; I don't think this is the idea way to do this
+          (set-car! env (cons (make-binding var val) frame))
+          (set-cdr! binding val)))))
+
+(define (extend-env frame base-env)
+  (cons frame base-env))
+(define the-frame (make-frame '(a b c d) '(1 2 3 4)))
+(define the-env (extend-env the-frame the-empty-environment))
+
+
+(lookup-variable-value 'b the-env)
+(set-variable-value! 'b 20 the-env)
+(display the-frame)
+(display the-env)
+(define-variable! 'e 5 the-env)
+(lookup-variable-value 'e the-env)
+#+END_SRC
+***** 4.13
+~make-unbound!~ will unbind the first occurrence of a variable name it encounters. It will search for the variable in the given environment, if the variable is not found it will look in the enclosing environment. If the variable is found it will unbind the variable from the environment and return. If ~make-unbound!~ does not find the variable in the environment or any enclosing environments the procedure will take no action.
+
+#+BEGIN_SRC scheme
+(define (make-unbound! var env)
+  (define (env-loop env)
+    (define (scan variables values prev-var prev-val)
+      (cond ((null? variables)
+             (env-loop (enclosing-environment env)))
+            ((eq? (car variables) var)
+             (if (null prev-var)
+                 (let ((new-frame (make-frame (cdr variables) (cdr values))))
+                   (set-car! env new-frame))
+                 (begin
+                   (set-cdr! prev-var (cdr variables))
+                   (set-cdr! prev-val (cdr values)))))
+            (else (scan (cdr variables) (cdr values)
+                        (car variables) (car values)))))
+    (if (not (eq? env the-empty-environment))
+        (let ((frame (first-frame env)))
+          (scan (frame-variables) (frame-values) '() '()))))
+  (env-loop env))
+#+END_SRC
+
+The solution above is untested, but it works by scanning through the environment hierarchy for the variable, if it finds the variable it removes it by modifying the frame. If the var is at the beginning of the frame we create a new frame using the `cdr` of the `variables` and `values` lists, essentially shifting the variable we want to unbind off the list. If the variable is found later in the lists we set the `cdr` of the previous variable an value -- which we pass along in the function call -- to the `cdr` of the `variables` and `values` lists, dropping the variable we wish to unbind out of those lists. If the variable is not found in the environment nothing is modified.
+*** 4.1.4 Running the Evaluator as a Program
+- Our evaluator program reduces expressions ultimately to the application of primitive procedures. All we need to run the evaluator is to create a mechanism that calls on the underlying Lisp system to model the application of primitive procedures.
+- We provide a /driver loop/ for convenience in running the metacircular evaluator
+  #+BEGIN_SRC scheme
+  (define input-prompt ";;; M-Eval input:")
+  (define output-prompt ";;; M-Eval value:")
+
+  (define (driver-loop)
+    (prompt-for-input input-prompt)
+    (let ((input (read)))
+      (let ((output (eval input the-global-environment)))
+        (announce-output output-prompt)
+        (user-print output)))
+    (driver-loop))
+
+  (define (prompt-for-input string)
+    (newline) (newline) (display string) (newline))
+  (define (announce-output string)
+    (newline) (display string) (newline))
+
+  (define (user-print object)
+    (if (compound-procedure? object)
+        (display  (list 'compound-procedure
+                        (procedure-parameters object)
+                        (procedure-body object)
+                        '<procedure-env>))
+        (display object)))
+
+  (define the-global-environment (setup-environment))
+
+  (driver-loop)
+  #+END_SRC
+**** Exercises
+***** 4.14
+Restating Answer from https://wizardbook.wordpress.com/2010/12/29/exercise-4-14/
+
+The problem with using the primitive ~map~, as in ~(map + '(1 2) '(3 4))~ comes when the evaluator attempts to apply the procedure to its arguments. The ~list-of-values~ procedure returns a list of each evaluated operand, including the ~+~ symbol. Since the ~+~ symbol is a primitive procedure, in the environment it is defined as ~'(primitive +)~. Thus the returned list of values that ~map~ is then applied to is ~(map ('(primitive +) '(1 2) '(3 4)))~ and ~map~ is unable to use the ~'(primitive +)~ procedure in its application, and thus fails.
+
+If we were to define a ~map~ procedurein our evaluator we could properly handle the evaluation and application of primitive procedures as they are defined in our environment. The problem boils down to a difference in syntax between the metacircular evaluator and the underlying Lisp implementation.
+*** 4.1.5 Data as Programs
+- One operation view of the meaning of a program is that a program is a description of an abstract (perhaps infinitely large) machine.
+- We can regard the evaluator as a very special machine that takes as input a description of a machine, and, given the input, the evaluator configures itself to emulate the machine described.
+  - The evaluator is seen to be a /universal machine/ that mimics other machines when other machines are described as Lisp programs.
+    - The deep idea here is that any evaluator can emulate any other. Thus, the notion of "what can in principle be computed" (ignoring practicalities of time and memory required) is independent of the language of the computer, and instead reflects on the underlying notion of computability.
+**** Exercises
+***** 4.15
+It would be impossible to write a procedure ~halts?~ because in order to determine if a procedure "halts" -- returns a value instead of an error or indefinitely executing -- you would need to evaluate the procedure. And by evaluating the procedure, if it does not halt it will never return and thus the ~halts?~ procedure will never be able to come to a determination.
+*** 4.1.6 Internal Definitions
+**** Exercises
+***** 4.16
+****** a
+#+BEGIN_SRC scheme
+(define (lookup-variable-value var env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop (enclosing-environment env)))
+            ((eq? var (car vars))
+             (if (eq? '*unassigned* (car vals))
+                 (error "Attempted use of unassigned variable" var)
+                 (car vals)))
+            (else (scan (cdr vars) (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable" var)
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+#+END_SRC
+****** b
+#+BEGIN_SRC scheme
+(define (scan-out-defines procedure-body)
+  (let ((let-exp '())
+        (set-exp '())
+        (body-exp '()))
+    (define (check-element element)
+      (if (definition? element)
+          (let ((var-name (cadr element)))
+            (begin
+              ;; double quote  *unassigned* so it is a quoted symbol after the 'cons' procedure
+              (set! let-exp (cons (list var-name ''*unassigned*) let-exp))
+              (set! set-exp (cons (list 'set! var-name (caddr element)) set-exp))))
+          (set! body-exp (cons element body-exp))))
+    (define (build-let-body)
+      (let ((start (list 'let let-exp)))
+        (append start set-exp body-exp)))
+    (map check-element procedure-body)
+    (build-let-body)))
+
+(define (lists-equal? a b)
+  (display "checking a: ") (display a) (newline)
+  (display "checking b: ") (display b) (newline)
+  (cond ((and (null? a) (null? b))
+         #t)
+        ((and (pair? a) (pair? b))
+         (and (lists-equal? (car a) (car b))
+              (lists-equal? (cdr a) (cdr b))))
+        (else (eq? a b))))
+
+(define test-proc '(lambda (x y)
+                     (define v (* x y))
+                     (define u (+ x y))
+                     (+ u v)))
+(define expected-transform '(let ((u '*unassigned*)
+                                  (v '*unassigned*))
+                              (set! u (+ x y))
+                              (set! v (* x y))
+                              (+ u v)))
+(define (test-scan-out-defines procedure expected)
+  ;; (cddr procedure) to extract the body portion of the procedure
+  (lists-equal? expected (scan-out-defines (cddr procedure))))
+(test-scan-out-defines test-proc expected-transform)
+#+END_SRC
+****** c
+Installing the procedure in ~make-procedure~ is better because it limits the number of times the procedure is invoked to only those when we are evaluating a procedure as opposed to calling ~scan-out-defines~ every time we are evaluating a compound procedure as we would if we installed it as part of ~procedure-body~.
+
+#+BEGIN_SRC scheme
+(define (make-procedure parameters body env)
+  (list 'procedure parameters (scan-out-defines body) env))
+
+(define test-proc '(lambda (x y)
+                     (define v (* x y))
+                     (define u (+ x y))
+                     (+ u v)))
+
+(define (lambda-params p) (cadr p))
+(define (lambda-body p) (cddr p))
+(make-procedure (lambda-params test-proc) (lambda-body test-proc) (the-environment))
+#+END_SRC
+***** 4.17
+Skipped
+***** 4.18
+The ~solve~ procedure with internal definitions scanned out according to the exercise description:
+#+BEGIN_SRC scheme
+(lambda (f y0 dt)
+  (let ((y '*unassigned*)
+        (dy '*unassigned*))
+    (let ((a (integral (delay dy) y0 dt))
+          (b (stream-map f y)))
+      (set! y a)
+      (set! dy b))
+    y))
+#+END_SRC
+
+With internal definitions scanned out according to the text (exercise 4.16):
+#+BEGIN_SRC scheme
+(lambda (f y0 dt)
+ (let ((dy '*unassigned*) (y '*unassigned*))
+   (set! dy (stream-map f y))
+   (set! y (integral (delay dy) y0 dt))
+   y))
+#+END_SRC
+Based on the transformations, the transformation according to the text (second snippet above) should work as the ~dy~ procedure will be set by the time ~y~ is set, so when  ~y~ is set ~dy~ will be the procedure and not ~'*unassigned*~. In the transformation based on the exercise (first above), the procedure represented by ~a~ will contain a reference to an ~'*unassigned~ ~dy~ variable and when we attempt to evaluate ~y~ the procedure will fail in trying to use the ~'*unassigned*~ value since ~dy~ is not set until after ~y~ is set.
+***** 4.19
+I agree with Eva that the value of ~a~ should be defined to be 5 resulting in ~b~ being 15 according to the rules of simultaneous scope for internal definitions. Although the mechanism to provide the result Eva is arguing for is not that chosen by the implementors of MIT Scheme, as footnote 25 notes, and that Alyssa's view is the one that is implemented in practice.
+To implement Eva's solution, the transformation required for internal definitions would need to check internal definitions to see which were procedures (pairs) and which were definitions to primitive values as ~a~ is in the exercise. All of the primitive value assignments would need to be placed in an outer ~let~ expression with all the internal procedure definitions placed in a ~let~ expression within the body of the "assignment" ~let~ expression.
+***** 4.20
+****** a
+#+BEGIN_SRC scheme
+(define (letrec-bindings lr)
+  (cadr lr))
+(define (letrec->let letrec)
+  (let ((variables '())
+        (procedures '())
+        (body (caddr letrec)))
+    (define (iter-expressions exps)
+      (define (transform-let exp)
+        (let ((name (car exp))
+              (proc (cadr exp)))
+          (set! variables (cons (list name ''*undefined*) variables))
+          (set! procedures (cons (list 'set! name proc) procedures))))
+      (if (not (null? exps))
+          (begin
+            (transform-let (car exps))
+            (iter-expressions (cdr exps)))))
+    (iter-expressions (letrec-bindings letrec))
+    (append (list 'let variables) procedures (list body))))
+
+(define test-letrec '(letrec ((even?
+                               (lambda (n)
+                                 (if (= n 0)
+                                     true
+                                     (odd? (- n 1)))))
+                              (odd?
+                               (lambda (n)
+                                 (if (= n 0)
+                                     false
+                                     (even? (- n 1))))))
+                       (even? 10)))
+
+;; pretty print transformed expression
+(pp (letrec->let test-letrec))
+
+(let ((odd? '*undefined*)
+      (even? '*undefined*))
+  (set! odd? (lambda (n) (if (= n 0) false (even? (- n 1)))))
+  (set! even? (lambda (n) (if (= n 0) true (odd? (- n 1)))))
+  (even? 10))
+#+END_SRC
+***** 4.21
+Skipped
+*** 4.1.7 Separating Syntactic Analysis from Execution
+- The evaluator implemented so far is simple but very inefficient because the syntactic analysis of expressions is interleaved with their execution.
+- We can transform the evaluator to be significantly more efficient by arranging things so that syntactic analysis is performed only once.
+  - Footnote: This technique is an integral part of the compilation process
+- Evaluator V2
+#+BEGIN_SRC scheme
+(define (eval exp env)
+  ((analyze exp) env))
+
+(define (analyze exp)
+  (cond ((self-evaluating? exp)
+         (analyze-self-evaluating exp))
+        ((quoted? exp) (analyze-quoted exp))
+        ((variable? exp) (analyze-variable exp))
+        ((assignment? exp) (analyze-assignment exp))
+        ((definition? exp) (analyze-definition exp))
+        ((if? exp) (analyze-if exp))
+        ((lambda? exp) (analyze-lambda exp))
+        ((begin? exp) (analyze-sequence (begin-actions exp)))
+        ((cond? exp) (analyze (cond->if exp)))
+        ((application? exp) (analyze-application exp))
+        (else
+         (error "Unknown expression type -- ANALYZE" exp))))
+
+(define (analyze-self-evaluating exp)
+  (lambda (env) exp))
+
+(define (analyze-quoted exp)
+  (let ((qval (text-of-quotation exp)))
+    (lambda (env) qval)))
+
+;; looking up a variable must still be done in the execution phase as it requires knowing the environment
+(define (analyze-variable exp)
+  (lambda (env) (lookup-variable-value exp env)))
+
+(define (analyze-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (analyze (assignment-value exp))))
+    (lambda (env)
+      (set-variable-value! var (vproc env) env)
+      'ok)))
+
+(define (analyze-definition exp)
+  (let ((var (definition-variable exp))
+        (vproc (analyze (definition-value exp))))
+    (lambda (env)
+      (define-variable! var (vproc env) env)
+      'ok)))
+
+(define (analyze-if exp)
+  (let ((pproc (analyze (if-predicate exp)))
+        (cproc (analyze (if-consequent exp)))
+        (aproc (analyze (if-alternative exp))))
+    (lambda (env)
+      (if (true? (pproc env))
+          (cproc env)
+          (aproc env)))))
+
+(define (analyze-lambda exp)
+  (let ((vars (lambda-parameters exp))
+        (bproc (analyze-sequence (lambda-body exp))))
+    (lambda (env) (make-procedure vars bproc env))))
+
+(define (analyze-sequence exps)
+  (define (sequentially proc1 proc2)
+    (lambda (env) (proc1 env) (proc2 env)))
+  (define (loop first-proc rest-procs)
+    (if (null? rest-procs)
+        first-proc
+        (loop (sequentially first-proc (car rest-procs))
+              (cdr rest-procs))))
+  (let ((procs (map analyze exps)))
+    (if (null? procs)
+        (error "Empty sequence -- ANALYZE"))
+    (loop (car procs) (cdr procs))))
+
+;; illustration of analyze-sequence
+;; ;; (a b c d e f)
+;; ;; (loop (lambda (env) (a env) (b env))
+;; ;;       (c d e f))
+;; ;; (loop (lambda (env)
+;; ;;         ((lambda (env) (a env) (b env)) env)
+;; ;;         (c env))
+;; ;;       (d e f))
+;; ;; (loop (lambda (env)
+;; ;;         ((lambda (env)
+;; ;;            ((lambda (env) (a env) (b env)) env)
+;; ;;            (c env)) env)
+;; ;;         (d env)))
+
+(define (analyze-application exp)
+  (let ((fproc (analyze (operator exp)))
+        (aprocs (map analyze (operands exp))))
+    (lambda (env)
+      (execute-application (fproc env)
+                           (map (lambda (aproc) (aproc env))
+                                aprocs)))))
+
+;; execute-application is the analog of apply, but since the procedure has already been analyzed we just call the execution procedure for the body on the extended environment
+(define (execute-application proc args)
+  (cond ((primitive-procedure? proc)
+         (apply-primitive-procedure proc args))
+        ((compound-procedure? proc)
+         ((procedure-body proc)
+          (extend-environment (procedure-parameters proc)
+                              args
+                              (procedure-environment proc))))
+        (else
+         (error
+          "Unknown procedure type -- EXECUTE-APPLICATION"
+          proc))))
+#+END_SRC
+**** Exercises
+***** 4.22
+#+BEGIN_SRC scheme
+;; begin - syntax procedures
+(define (let-expressions exp)
+  (cadr exp))
+(define (let-var-names exp)
+  (map car (let-expressions exp)))
+(define (let-var-exps exp)
+  (map cadr (let-expressions exp)))
+(define (let-body exp)
+  (caddr exp))
+(define (let->combination exp)
+  (cons
+   (make-lambda (let-var-names exp) (list (let-body exp)))
+   (let-var-exps exp)))
+;; end
+
+(define (analyze exp)
+  (cond ((self-evaluating? exp)
+         (analyze-self-evaluating exp))
+        ;; ...
+        ((let? exp) (analyze (let->combination exp)))
+        ((lambda? exp) (analyze-lambda exp))
+        ;; ...
+        (else
+         (error "Unknown expression type -- ANALYZE" exp))))
+#+END_SRC
+***** 4.23
+The execution procedure provided by Alyssa will return a lambda with a call to ~execute-sequence~ whereas the execution procedure provided in the text will return a lambda with a map call that executes each procedure in the sequence. For the case in which only a single procedure is in the sequence the two calls will behave similarly, both executing the procedure in the given environment. In the case where there are two or more procedures in the sequence, the procedure in the text will be more efficient because the execution-procedure is mapping over all of the procedures in the sequence, whereas Alyssa's procedure will need to recurse and perform the ~if~ logic again as part of the execution of the execution-procedure, making Alyssa's procedure less efficient for larger sequences.
+***** 4.24
+Skipped
+** 4.2 Variations on a Scheme -- Lazy Evaluation
+*** 4.2.1 Normal Order and Applicative Order
+- /applicative order/ language - all the arguments to procedures are evaluated when the procedure is applied
+- /normal order/ languages delay evaluation of procedure arguments until the actual argument values are needed.
+  - delaying evaluation of procedure arguments until the last possible moment -- e.g. until they are required by a primitive operation -- is called /lazy evaluation/
+    - an advantage of lazy evaluation is that some procedures can do useful computation even if evaluation of some of their arguments would produce errors or would not terminate
+- If the body of a procedure is entered before an argument has been evaluated we say that the procedure is /non-strict/ in that argument. If the argument is evaluated before the body of the procedure is entered we say that the procedure is /strict/ in that argument.
+**** Exercises
+***** 4.25
+Given the definitions of ~unless~ and ~factorial~:
+#+BEGIN_SRC scheme
+(define (unless condition usual-value exceptional-value)
+  (if condition exceptional-value usual-value))
+(define (factorial n)
+  (unless (= n 1)
+    (* n (factorial (- n 1)))
+    1))
+#+END_SRC
+ If we attempt to compute ~(factorial 5)~ using applicative-order evaluation we were recurse infinitely and ultimately abort. This is because ~unless~ and ~factorial~ perform mutually recursive procedures.The ~usual-value~ argument to ~unless~ is ~(* n (factorial (- n 1)))~ and in applicative order evaluation this argument is evaluated before entering the body of the ~unless~ procedure. The ~factorial~ procedure contains a call to ~unless~ in its body and thus the cycle of evaluating ~unless~, then evaluating ~factorial~ as the ~usual-value~ argument will recurse.
+
+Using normal-order evaluation the factorial procedure would return the proper result because the ~usual-value~ argument would not be evaluated until it is needed, and therefore the ~unless~ procedure would only evaluate the mutual recursion when the condition was not met. Eventually the condition would be met, preventing further evaluation of the mutually recursive procedures.
+***** 4.26
+#+BEGIN_SRC scheme
+(define (unless-condition exp)
+  (car exp))
+(define (unless-usual-val exp)
+  (cadr exp))
+(define (unless-exceptional-val exp)
+  (caddr exp))
+(define (unless->if exp)
+  (make-if (unless-condition exp)
+           (unless-usual-val exp)
+           (unless-exceptional-val exp)))
+#+END_SRC
+*** 4.2.2 An Interpreter with Lazy Evaluation
+- The required changes to make the earlier implementation of the evaluator use normal-order evaluation for compound procedures center around procedure application.
+- The interpreter must determine which arguments are to be evaluated and which are to be delayed.
+  - delayed args are transformed into /thunks/ which contain all the information required to produce the value of the argument.
+  - evaluating an expression in a thunk is called /forcing/
+    - a thunk is forced when its value is needed:
+      - the thunk is passed to a primitive procedure that will use the value of the thunk
+      - the thunk is the value of a predicate of a conditional.
+      - the thunk is the value of an operator that is about to be applied as a procedure.
+- **Note**
+  - lazy evaluation combined with memoization is referred to as /call-by-need/.
+  - lazy evaluation without memoization is /call-by-name/
+**** Representing thunks
+- The evaluator must create thunks when procedures are applied to arguments and to force these thunks later.
+  - A thunk must package an expression together with the environment so that the argument can be produced later.
+  - To force a thunk, we extract the expression and environment from the thunk and evaluate the expression in the environment
+**** Exercises
+***** 4.27
+#+BEGIN_SRC scheme
+(define count 0)
+(define (id x)
+  (set! count (+ count 1))
+  x)
+
+(define w (id (id 10)))
+
+;; input:
+count
+;; value
+1
+;; The value of 'count' here is one because in the definition of 'w' above the outer 'id' procedure is evaluated to proved a value for 'w', resulting in a single evaluation of the '+' procedure to increment count, however the argument to the outer 'id' call, '(id 10)' is delayed as part of the procedure application. When we evaluate a compound procedure as part of the definition of 'w' the outer call is evaluated but the arguments to the outer call are delayed which result in the single increment of 'count'. The reason the outer 'id' is evaluated in the first place is because when evaluating a 'definition' we evaluate the definition-value portion of the define procedure, '(id (id 10))', which evaluates as an 'application?' thereby calling 'eval-sequence' which evaluates the body of the 'id' expression once with a 'thunk' of '(id 10)' representing x. The thunk is not evaluated until it is needed.
+
+;; input
+w
+;; value
+10
+;; The value of 'w' after evaluation is the value of the argument 'x'. In the definition of 'w' the inner call to 'id' is passed '10' which is then returned and used as the argument to the outer call to 'id' which also results in '10'. However it does mean the 'id' procedure is evaluated twice incrementing the count, as described below
+
+;; input
+count
+;; value
+2
+;; The above evaluation of w results in the forcing of the thunk representing 'x' because of the 'actual-value' call in the driver loop which calls 'force-it' on the expressions. 'force-it' will be called with the thunk object and force the evaluation of the thunk.
+#+END_SRC
+***** 4.28
+If the operator of the procedure is a procedure itself then the operator procedure will need to be forced in order to apply it to the operands, if not an error will occur in trying to apply a thunk to a set of operands. For example below, the operator procedure is a procedure itself, ~determine-proc~, that determines which procedure to apply to the operands based on the input arguments.
+#+BEGIN_SRC scheme
+(define (determine-proc in)
+  (if (= in 0)
+      +
+      -))
+
+((determine-proc 0) 2 2)
+;; 4
+#+END_SRC
+***** 4.29
+Any program that needs to repeat expensive calculations on sequential executions would see a performance benefit from memoization. A trivial example is calculating fibonacci numbers (I believe this example is discussed in an earlier chapter). A procedure that calculates the n-th fibonacci number must calculate all the fibonacci numbers until it reaches the n-th one. If the procedure is not memoized then each execution will have to recalculate all n fibonacci numbers. With memoization however, the a procedure only needs perform calculations for fibonacci numbers that further along in the sequence than the previous maximum n calculated, denoted by m that means the procedure needs to calculate at most ~n - m~ fibonacci numbers, it can reuse the memoized results for the previous ~m~ fibonacci numbers without needing to recalculate them.
+
+#+BEGIN_SRC scheme
+(define (square x x)
+  (* x x))
+
+(square (id 10))
+;; 100
+
+count
+;; Memoized: 1
+;; Non-memoized: 2
+#+END_SRC
+Above, the argument ~(id 10) is a thunk and thus is only executed when needed. In the ~square~ procedure the argument ~x~ is repeated and when ~square~ is called ~x~ is replaced with ~(* (thunk (id 10) env) (thunk (id 10) env))~. When the procedure body of ~square~ is evaluated the thunks are evaluated when the primitive ~*~ is applied to them. Without memoization the procedure ~id~ is fully evaluated twice, once for each thunk represented by ~x~ resulting in two increments to ~count~. With memoization the ~id~ procedure is fully evaluated once and the memoized result is returned for the second ~id~ evaluation resulting in a single increment to ~count~.
+***** 4.30
+****** a
+~for-each~ handles the evaluation properly because the procedure call binds the ~lambda~ procedure and the ~list~ of numbers to the ~proc~ and ~items~ arguments respectively when it extends the environment. Then when the ~begin~ sequence is evaluated it calls ~eval-sequence~ again which evaluates the ~(proc (car items))~ expression, looking up ~proc~ and ~items~ in the environments and evaluating it as a procedure application and using the actual values.
+****** b
+#+BEGIN_SRC scheme
+(define (p1 x)
+   (set! x (cons x '(2)))
+   x)
+
+(define (p2 x)
+   (define (p e)
+     e
+     x)
+   (p (set! x (cons x '(2)))))
+#+END_SRC
+With the orignal ~eval-sequence~ the values are:
+#+BEGIN_SRC scheme
+;;; L-Eval input:
+(p1 1)
+
+;;; L-Eval value:
+(1 2)
+
+;;; L-Eval input:
+(p2 1)
+
+;;; L-Eval value:
+1
+#+END_SRC
+The reason we get ~1~ as the value of ~(p2 1)~ is because with ~eval~ in ~eval-sequence~ the ~x~ argument is an unevaluated thunk in the inner ~p~ procedure, so even though ~x~ in the ~(set! x (cons x '(2)))~ procedure is evaluated to 1 and then cons'd to ~(1 2)~, the ~set!~ procedure is never evaluated because it is passed to ~e~ as therefore delayed, while final procedure in ~p~ is still the ~x~ thunk which is looked up in the environment and evaluates to ~1~. In the example below, since we replace ~eval~ with ~actual-value~ as we are evaluating the sequence of procedures in the procedure body the ~set!~ procedure is actually evaluated which changes the state of ~x~ in the environment before the inner ~p~ procedure returns the newly changed ~x~ value.
+
+With the proposed changes:
+#+BEGIN_SRC scheme
+;;; L-Eval input:
+(p1 1)
+
+;;; L-Eval value:
+(1 2)
+
+;;; L-Eval input:
+(p2 1)
+
+;;; L-Eval value:
+(1 2)
+#+END_SRC
+****** c
+The changes proposed do not change the behavior of the ~for-each~ loop in part a because the ~actual-value~ evaluation and the ~eval~ evaluation both end up looking up the arguments in the extended environment and applying the resulting ~proc~ operator to the list of ~items~. There are also no side effects in the ~lambda~ procedure used in the ~for-each~, it is a purely functional procedure execution, not modifying any external state that would change the behavior of the ~proc~ lambda on subsequent executions.
+****** d
+I think the treatment of sequences depends on the goal of the language. With the proposed changes the evaluator evaluates procedures in a way that more closely resembles an imperative language, as opposed to the original implementation which is a more functional approach to evaluation.
+***** 4.31
+Skipped
+*** 4.2.3 Streams as Lazy Lists
+- With lazy evaluation streams and lists can be identical and there is no need to use special forms or to separate list and stream operations.
+- One way to represent streams as lazy list is to represetn pairs as procedures (section 2.1.3)
+  #+BEGIN_SRC scheme
+  (define (cons x y)
+    (lambda (m) (m x y)))
+  (define (car z)
+    (z (lambda (p q) p)))
+  (define (cdr z)
+    (z (lambda (p q) q)))
+  #+END_SRC
+**** Exercises
+***** 4.32
+As mentioned in the text, one of the largest differences between these lazy lists and the streams in chapter 3 is that both the ~car~ and ~cdr~ of the list are lazy and use delayed execution. One way to take advantage of this laziness is when building a list of expensive-to-calculate values, you can initialize the list for use but do not have to pay any of the cost until you actually need to use the values in the list.
+***** 4.33
+In order to properly evaluate quoted lists as lazy-lists we need to update our interpretation of quoted procedure to transform the quoted list value, e.g. ~'(1 2 3)~ into a lazy list, e.g. ~(cons '1 (cons '2 (cons '3 '())))~ and then evaluate that in the environment.
+
+Below I have prefixed the primitive list procedures ~cons~, ~car~, and ~cdr~ with ~l~ to differentiate from the normal procedures
+#+BEGIN_SRC scheme
+(define (lcons x y)
+  (lambda (m) (m x y)))
+(define (lcar z)
+  (z (lambda (p q) p)))
+(define (lcdr z)
+  (z (lambda (p q) q)))
+
+(define prev-eval eval)
+;; small wrapper around the eval procedure ot test the quote changes
+(define (eval expr env)
+  (if (quoted? expr)
+      (text-of-quote expr env)
+      (prev-eval expr env)))
+
+;; if the quote is a pair then we need to make a lazy list from it
+(define (text-of-quote exp env)
+  (if (pair? (cadr exp))
+      (eval (make-list (cadr exp)) env)
+      (cadr exp)))
+
+;; this make-list procedure has to build an expression that can be evaluated, hence the use of "list" and "'quote" here because the form returned from this procedure is passed to 'eval' and evaluated in the environment.
+;; The result of this procedure being called on a quoted form ~'(1 2 3)~ is the expression
+;;   ~(lcons (quote 1) (lcons (quote 2) (lcons (quote 3) (quote ()))))~
+;; which is then passed to eval which looks up ~lcons~ in the environment and applies it to the arguments
+(define (make-list exp)
+  (if (null? exp)
+      (list 'quote '())
+      (list 'lcons (list 'quote (car exp))
+            (make-list (cdr exp)))))
+
+#+END_SRC
+***** 4.34
+Skipped?
+** 4.3 Variations on a Scheme -- Nondeterministic Computing
+- /nondeterministic computing/
+  - Expressions can have more than one possible value in a nondeterministic language.
+  - An example nondeterministic program:
+    #+BEGIN_SRC scheme
+    (define (prime-sum-pair list1 list2)
+    (let ((a (an-element-of list1))
+          (b (an-element-of list2)))
+      (require (prime? (+ a b)))
+      (list a b)))
+    #+END_SRC
+- Different images of time evoked by nondeterministic evaluation and stream processing
+  - Stream processing uses lazy evaluation to decouple the time when the stream of possible answers is assembled from the time when the actual stream elements are produced.
+  - In nondeterministic evaluation an expression represents the exploration of a set of possible worlds, each determinied by a set of choices. Some worlds result in dead ends and some in useful values. When we reach a dead end, we can revisit a previous choice point and proceed along a different branch.
+*** 4.3.1 Amb and Search
+- To extend Scheme to support nondeterminism we introduce a new special form called ~amb~.
+  - ~(amb <e1> <e2> ... <eN>)~ returns the value of one of the ~n~ expressions "ambiguously"
+  - With a single choice ~amb~ returns a single value.
+  - With no choices the computation "fails"
+- We can imagine that an ~amb~ expression causes time to split into branches, where the computation continues on each branch with one of the possible values of the expression. ~amb~ represents a /nondeterministic choice point/
+- /depth-first search/ or /chronological backtracking/ is a systematic search where the first alternative is chosen and execution proceeds down that branch, if execution encounters a failure it /backtracks/ to the most recent choice point and tries the next alternative. If all the alternatives are exhausted for a choice point it backtracks to the previous choice point and proceeds from there.
+**** Exercises
+***** 4.35
+#+BEGIN_SRC scheme
+(define (an-integer-between low high)
+  (require (<= low high))
+  (amb low (an-integer-between (+ low 1) high)))
+#+END_SRC
+*****  4.36
+#+BEGIN_SRC scheme
+(define (a-pythagorean-triple-between low high)
+  (let ((i (an-integer-between low high)))
+    (let ((j (an-integer-between low high)))
+      (let ((k (an-integer-between low high)))
+        (require (= (+ (* i i) (* j j)) (* k k)))
+        (list i j k)))))
+#+END_SRC
+Replacing ~an-intger-between~ with ~an-integer-starting-from~ would not be adequate because there is no upper bound with ~an-integer-starting-from~ which would cause the procedure above to never return. (Answer taken from https://wizardbook.wordpress.com/2011/01/12/exercise-4-36-2/)
+
+A procedure that will generate Pythagorean triples (based on the formula in Wikipedia https://en.wikipedia.org/wiki/Pythagorean_triple#The_Platonic_sequence):
+*Note* I am not fully sure this will work, need to come back and test when we implement the ~amb~ evaluator.
+#+BEGIN_SRC scheme
+;; define the amb procedure to return 'fail if it is called (meaning the require fails)
+(define (amb) 'fail)
+(define (require p)
+  (if (not p) (amb)))
+;; a very basic test since we do not have an implementation for ~amb~ yet, this just sets i to be 'low' value
+(define (an-integer-starting-from low) low)
+(define (a-pythagorean-triple-from low)
+  (define (k i)
+    (if (odd? i)
+        (/ (+ (square i) 1) 2)
+        (+ (square (/ i 2)) 1)))
+  (define (j i)
+    (if (odd? i)
+        (/ (- (square i) 1) 2)
+        (- (square (/ i 2)) 1)))
+  (let ((i (an-integer-starting-from low)))
+    (require (integer? j))
+    (require (integer? k))
+    (list i (j i) (k i))))
+
+(a-pythagorean-triple-from 3)
+;; (3 4 5)
+#+END_SRC
+***** 4.37
+The solution presented in this exercise is more efficient than the one presented in 4.35 because it derives ~k~ from the values of ~i~ and ~j~, rather than using three arbitrary values and checking to see if they make up a pythagorean triple. Another reason the solution in this exercise is more effiecient are the ~require~ statements that require certain values for the combination of ~i~ and ~j~, ~(require (>= hsq ksq))~ which will backtrack if it fails thus placing a limit on the range of values for i and j and checking fewer triple values.
+*** 4.3.2 Examples of Nondeterministic Programs
+- The advantage of nondeterministic programming is that we can suppress the details of how search is carried out, thereby expressing our programs at a higher level of abstraction.
+**** Logic Puzzles
+#+BEGIN_SRC scheme
+(define (distinct? items)
+  (cond ((null? items)  true)
+        ((null? (cdr items)) true)
+        ((member (car items) (cdr items)) false)
+        (else (distinct? (cdr items)))))
+
+(define (multiple-dwelling)
+  (let ((baker (amb 1 2 3 4 5))
+        (cooper (amb 1 2 3 4 5))
+        (fletcher (amb 1 2 3 4 5))
+        (miller (amb 1 2 3 4 5))
+        (smith (amb 1 2 3 4 5)))
+    (require
+     (distinct? (list baker cooper fletcher miller smith)))
+    (require (not (= baker 5)))
+    (require (not (= cooper 1)))
+    (require (not (= fletcher 5)))
+    (require (not (= fletcher 1)))
+    (require (> miller cooper))
+    (require (not (= (abs (- smith fletcher)) 1)))
+    (require (not (= (abs (- fletcher cooper)) 1)))
+    (list (list 'baker baker)
+          (list 'cooper cooper)
+          (list 'fletcher fletcher)
+          (list 'miller miller)
+          (list 'smith smith))))
+#+END_SRC
+***** Exercises
+****** 4.38
+Skipped
+****** 4.39
+The order of the restrictions should not affect the answer nor the time to arrive at the answer. Since each value is determined ambiguosly the time to determine each value can be treated as constant, and since each rule has to pass and the checks do not have any dependency on any of the other checks, any ordering of the requirements should produce the same results in the same time.
+
+There may be a case to be made that since some of the checks have more possible combinations of values that pass the requirement those requirements should be validated first as they will result in the less backtracking needing to tack place. However I can also see the argument that the current order in which the requirements that certain values are not equal to a specific "floor" are better to check first as it is easier to backtrack if a value required to not be 5 is 5. I am not sure what reasoning is correct here.
+****** 4.40
+Skipped
+****** 4.41
+#+BEGIN_SRC scheme
+(define (multiple-dwelling)
+  (define (rand-of n)
+    (+ (random n) 1))
+  (let ((baker (rand-of 3))
+        (cooper (+ (rand-of 4) 2))
+        (fletcher (+ (rand-of 3) 2))
+        (miller (rand-of 5))
+        (smith (rand-of 5)))
+    (if (> miller cooper)
+        (if (not (= (abs (- smith fletcher)) 1))
+            (if (not (= (abs (- fletcher cooper)) 1))
+                (if (distinct? (list baker cooper fletcher miller smith))
+                    (list
+                     (list 'baker baker)
+                     (list 'cooper cooper)
+                     (list 'fletcher fletcher)
+                     (list 'miller miller)
+                     (list 'smith smith))
+                    (multiple-dwelling))
+                (multiple-dwelling))
+            (multiple-dwelling))
+        (multiple-dwelling))))
+#+END_SRC
+****** 4.42
+Skipped
+****** 4.43
+Skipped
+****** 4.44
+**** Parsing natural language
+- /Parsing/ input is to match input against some grammatical structure.
+- A /grammar/ is a set of rules describing how grammatical elements are composed from simpler elements
+***** Exercises
+****** 4.45
+Skipped
+****** 4.46
+If the operands to ~amb~ were evaluated in an order other than left to right the parsing program would not work because, due to the infinite sturcture of ~parse-prepositional-phrase~ with ~parse-noun-phrase~ and ~parse-verb~phrase~ it could potentially end up in an infinitely recursive loop, and never parse the input.
+****** 4.47
+The program should work. If we interchange the order of expressions in the ~amb~ we run into the same infinite recursion problem discussed in 4.46. Assuming ~amb~ is evaluating left to right, it will evaluate ~(list 'verb-phrase (parse-verb-phrase) (parse-prepositional-phrase))~ first. ~(parse-verb-phrase)~ would then recurse and evaluate the ~amb~ expressions which would again attempt to evaluate, from left to right, the ~(list 'verb-phrase (parse-verb-phrase) (parse-prepositional-phrase))~ first. ~(parse-verb-phrase)~ which would loop infinitely.
+****** 4.48
+Skipped
+****** 4.49
+Here is an implementation for generating basic sentences. It generates the same sentence due to the implementation of ~amb~.
+#+BEGIN_SRC scheme
+;; basic 'amb' for testing, pick first arg
+(define (amb . args)
+  (if (null? args)
+      'fail
+      (car args)))
+
+(define (gen-word word-list)
+  (define (choose words)
+    (display words) (newline)
+    (if (null? words)
+        (amb)
+        (amb (car words)
+             (choose (cdr words)))))
+  (let ((words (cdr word-list)))
+    (choose words)))
+
+(define (gen-sentence)
+  (list 'sentence
+        (gen-noun-phrase)
+        (gen-verb)))
+
+(define (gen-noun-phrase)
+  (list 'noun-phrase
+        (gen-word articles)
+        (gen-word nouns)))
+(define (gen-verb)
+  (list 'verb
+        (gen-word verbs)))
+
+(gen-word nouns)
+(gen-sentence)
+#+END_SRC
+A more robust implementation of ~amb~ would result in more varied sentences.
+*** 4.3.3 Implementing the ~amb~ Evaluator
+- Execution procedures in the ordinary evaluator take one argument, the environment. Execution procedures in the ~amb~ evaluator take three arguments: the environment, and two procedures called /continuation procedures/.
+  - The evaluation of a procedure finishes by calling one of the two continuation procedures
+    - If the evaluation results in a value, the /success continuation/ is called with that value
+      - job of the success continuation to proceed with the computation with the value and another failure continuation should the use of the value result in the discovery of a dead end.
+    - If the evaluation results in the discovery of a dead end, the /failure continuation/ is called.
+      - job of the failure continuation to try another branch of the nondeterministic process
+      - They are constructed by:
+        - ~amb~ expressions - to provide a mechanism to make alternative choices if the current choice leads to a dead end
+        - the top-level driver - to provide a mechanism to report failure when the choices are exhausted
+        - assignments - to intercept failures and undo assignments during backtracking
+      - They are initiated by failures:
+        - the program executes  ~(amb)~
+        - the user types ~try-again~ at the driver loop
+  - Constructing and calling the appropriate continuations is the mechanism by which the nondeterministic evaluatior implements backtracking
+**** Exercises
+***** 4.50
+#+BEGIN_SRC scheme
+;; removed other analyze conditions for brevity
+(define (analyze exp)
+  (cond ((amb? exp) (analyze-amb exp))
+        ;; --- begin ex 4.50 --
+        ((ramb? exp) (analyze-ramb exp))
+        ;; --- end ex 4.50 ---
+        (else
+         (error "Unknown expression type -- ANALYZE" exp))))
+
+(define (ramb? exp) (tagged-list? exp 'ramb))
+(define (ramb-choices exp) (cdr exp))
+(define (analyze-ramb exp)
+  (let ((cprocs (map analyze (ramb-choices exp))))
+    (lambda (env succeed fail)
+      (define (try-rand-choice choices)
+        (if (null? choices)
+            (fail)
+            (let ((option (random (length choices))))
+              (let ((choice (list-ref choices option)))
+                (choice env
+                        succeed
+                        (lambda ()
+                          (try-rand-choice (delete choice choices))))))))
+      (try-rand-choice cprocs))))
+#+END_SRC
+This can help the problem in exercise 4.49 because the random selection of an procedure to execute will result in a randomized collection of "sentence-parts" that still adhere to the general grammatical structure described in the sentence grammar. The generated sentences will be more random.
+***** 4.51
+#+BEGIN_SRC scheme
+;; permanent-assignment
+(define (permanent-assignment? exp)
+  (tagged-list? exp 'permanent-set!))
+
+(define (analyze-permanent-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (assignment-value exp)))
+    (lambda (env succeed fail)
+      ((analyze vproc) env
+             (lambda (val fail2)
+               (set-variable-value! var val env)
+               (succeed 'ok
+                        fail2))
+             fail))))
+#+END_SRC
+
+If we had used ~set!~ instead of ~permanent-set!~ the count would be reset with each failure and not track the total number of executions. Upon a failure of the requirement the ~count~ would have been reset to 0 and a successful execution would only see a single incrementation.
+***** 4.52
+#+BEGIN_SRC scheme
+(define (analyze exp)
+  (cond ;; -- begin ex 4.52 --
+        ((if-fail? exp) (analyze-if-fail exp))
+        ;; --- end ex 4.52 ---
+        (else
+         (error "Unknown expression type -- ANALYZE" exp))))
+
+
+(define (if-fail? exp) (tagged-list? exp 'if-fail))
+(define (if-fail-initial-process exp) (cadr exp))
+(define (if-fail-failure-process exp) (caddr exp))
+(define (analyze-if-fail exp)
+  (let ((sproc (analyze (if-fail-initial-process exp)))
+        (fproc (analyze (if-fail-failure-process exp))))
+    (lambda (env succeed fail)
+      (sproc env
+             ;; this works but it prints #f instead of the value, not sure why
+             succeed
+             (lambda ()
+               (fproc env succeed fail))))))
+#+END_SRC
+***** 4.53
+The evaluation of the expression should result in ~pairs~ containing all of the results of ~prime-sum-pairs~, a list of each pair that sums up to a prime, ~((3 20) (3 110) (8 35))~.
+***** 4.54
+#+BEGIN_SRC scheme
+(define (analyze-require exp)
+  (let ((pproc (analyze (require-predicate exp))))
+    (lambda (env succeed fail)
+      (pproc env
+             (lambda (pred-value fail2)
+               (if (not (true? pred-value))
+                   (fail2)
+                   (succeed 'ok fail2)))
+             fail))))
+#+END_SRC
+** 4.4 Logic Programming
+- Computer science deals with imperative (how to) knowledge, whereas mathematics deals with declarative (what is) knowledge
+*** 4.4.1 Deductive Information Retrieval
+- Logic programming excels at providing interfaces to databases for information retrieval.
+- An input query for the system specifiese that we are looking for entries in the database that match a certain /pattern/.
+  - a /pattern variable/ is used in a query to represent "anything"
+- The description of the query language's processing of simple queries:
+  - The system finds all assignments to variables in the query pattern that /satisfy/ the pattern -- that is, all sets of values for the variables such that if the pattern variables are /instantiated with/ (replaced by) the values, the results is in the database.
+  - The system responds to the qeury by listing all instantiations of the query pattern with the variable assignments that satisfy it.
+  - **Note** if the pattern has no variables the query reduces to a determination of whterh that pattern is in the database.
+**** Exercises
+***** 4.55
+#+BEGIN_SRC scheme
+;; a
+(supervisor ?x (Bitdiddle Ben))
+;; b
+(job ?x (accounting . ?y))
+;; c
+(address ?x (Slumerville . ?y))
+#+END_SRC
+**** Compound Queries
+- Simple queries form the primitive operations of the query language, in order to form compound operations the query language provides means of combination.
+***** Exercises
+****** 4.56
+#+BEGIN_SRC scheme
+;; a
+(and (supervisor ?name (Bitdiddle Ben))
+     (address ?name ?addr))
+;; b
+(and (salary (Bitdiddle Ben) ?bensalary)
+     (and (salary ?person ?amount)
+          (lisp-value < ?amount ?bensalary)))
+;; c
+(and (not (job ?name (computer .)))
+     (and (supervisor ?employee ?name)
+          (job ?name ?j)))
+#+END_SRC
+**** Rules
+- The query language provides means for abstracting queries, these are given by /rules/
+  - The general form of a rule is:
+  #+BEGIN_SRC scheme
+  (rule <conclusion> <body>)
+  #+END_SRC
+    - /<conclusion>/ is a pattern and /<body>/ is any query
+***** Exercises
+****** 4.57
+#+BEGIN_SRC scheme
+;; Rule definition
+(rule (replaceable ?person-1 ?person-2)
+      (and (or (same (job ?person-1 ?job-1)
+                     (job ?person-2 ?job-2))
+               (can-do-job ?job-1 ?job-2))
+           (not (same ?person-1 ?person-2))))
+
+;; a
+(replaceable ?person-1 (Fect Cy D))
+
+;; b
+(and (replaceable ?person-1 ?person-2)
+          (salary ?person-1 ?salary-1)
+          (salary ?person-2 ?salary-2)
+          (lisp-value > ?salary-1 ?salary-2))
+#+END_SRC
+****** 4.58
+#+BEGIN_SRC scheme
+(rule (big-shot ?person)
+      (and (job ?person (?division-1 .))
+           ;; The case where the supervisor is in a different division or there is no supervisor
+           (or
+            (not (supervisor ?person ?person-2))
+            (supervisor ?person ?person-2))
+           (job ?person-2 (?division-2 .))
+           (not (same ?division-1 ?division-2))))
+#+END_SRC
+****** 4.59
+#+BEGIN_SRC scheme
+;; a
+(meeting ?meet (Friday ?time))
+
+;; b
+(rule (meeting-time ?person ?day-and-time)
+      (or (meeting whole-company ?day-and-time)
+          (and (job ?person (?division .))
+               (meeting ?division ?day-and-time))))
+
+;; c
+(meeting-time (Hacker Alyssa P) (Wednesday ?time))
+#+END_SRC
+****** 4.60
+This happens because the query is run for each person in the ~?person-1~ position and thus a match for one pair will match the corresponding inverse of the pair. We could find a list in which pairs appear only once if we could keep track of the existing results and check if ~?person-2~ was already found in a valid result as ~?person-1~.
+**** Logic as programs
+- We can regard a rule as a kind of logical implication: /If/ an assignment of values to pattern variables satisfies the body, /then/ it satisfies the conclusion.
+***** Exercises
+****** 4.61
+#+BEGIN_SRC scheme
+(rule (?x next-to ?y in (?x ?y . ?u)))
+(rule (?x next-to ?y in (?v . ?z))
+      (?x next-to ?y in ?z))
+
+(?x next-to ?y in (1 (2 3) 4))
+; (1 next-to (2 3) in (1 (2 3) 4))
+; ((2 3) next-to 4 in (1 (2 3) 4))
+
+(?x next-to 1 in (2 1 3 1))
+; (2 next-to 1 in (2 1 3 1))
+; (3 next-to 1 in (2 1 3 1))
+#+END_SRC
+****** 4.62
+Skipped
+****** 4.63
+Skipped
+*** 4.4.2 How the Query System Works
+- The query system is organized around two central operations called /pattern matching/ and /unification/.
+**** Pattern matching
+- A /pattern matcher/ is a program that tests whether some datum fits a specified pattern.
+  - The pattern matcher used in the query system takes as inputs a pattern, a datum, and a /frame/ that specifies binding for various pattern variables.
+    - It checks whether the datum matches the pattern in a way that is consistent with the bindings already in the frame. If so it returns the given frame augmented by any bindings that may have been determined by the match, otherwise it indicates the match failed.
+    - The pattern matcher is all the mechanism that is needed to process simple queries that don't involve rules.
+**** Streams of frames
+- Testing patterns agains frames is organized through the use of streams.
+  - For each database entry the matcher generates either a symbol indicating the match failed or an extension to the frame.
+  - The results for all the database entries are collected into a stream and then filtered to remove the failures resulting in a stream of all the frames that extend the given frame via a match to some assertion in the data base.
+**** Compound queries
+- The processing of compound queries makes use of the ability of our matcher to demand that a match be consistent with a specified frame.
+  - The ~and~ of two queries can be viewed as a series combination of the two component queries. Thre  frames that pass through the first query filter are filtered and further extended by the second query.
+  - The ~or~ of two queries is a parallel combination fo the two component queries.
+    - The input stream of frames is extended separately by each query and the two resulting streams are merged to produce the final output stream
+**** Unification
+- In order to handle rules in the query language, we must be able to find the rules whose conclusions match a given query pattern.
+  - Rule conclusions are like assertions except that they can contain variables.
+  - We need a generalization of pattern matching -- called /unification/ -- in which both the "pattern" and the "datum" may contain variables
+- A unifier takes two patterns, each containing constants and variables, and determines whether it is possible to assign values to the variables that will make the two patterns equal.
+  - The unifier uesd in the query system takes a frame as input and performs unifications taht are consistent with this frame.
+- The unification algorithm is the most technically difficult part of the query system.
+- In a successful pattern match , all pattern variables become bound and the values to which they are bound contain only constants. However, a successful unification may not completely determine the variable values; some variables may remain unbound and others may be bound to values that contain variables.
+- **Footnote** Another way to think of unification is that it generates the most general pattern that is a specialization of the two input patterns
+**** Applying rules
+- Unification is the key to the component of the query system that makes inferences from rules.
+- In general, the query evaluator uses the following method to apply a rule when trying to establish a query pattern in a frame that specifies bindings for some of the pattern variables:
+  - Unify the query with the conclusion of the rule to form, if successful, an extension of the original frame
+  - Relative to the extended frame, evaluate the query formed by the body of the rule.
+- The above is similar to applying a procedure in the ~eval/apply~ evaluator for Lisp:
+  - Bind the procedure's parameters to its arguments to form a frame that extends the orginal procedure environment
+  - Relative to the extended environment, evaluate the expression formed by the body of the procedure
+- procedure definitions are the means of abstraction in Lisp, rule definitions are the means of abstraction in the query language.
+**** Simple queries
+- Given the query pattern and a stream of frames, we produce, for each frame in the input stream, two streams:
+  - a stream of extended frames obtained by matching the pattern agains all assertions in the database using the pattern matcher
+  - a stream of extended frames obtained by applying all possible rules using the unifier
+- Appending these two streams produces a stream that consists fo all the ways that the given pattern can be satisfied consistent with the original frame.
+**** The query evaluator and the driver loop
+- Despite the complexity the system is organized much like an evaluator for any language.
+  - The ~qeval~ procedure is responsible for coordinating the matching operations. The ~driver-loop~ reads queries from the terminal and calls ~qeval~ with each query and a stream that consists of a single empty frame, it prints the results by instantiating the original query using the values found in each frame.
+    - The drive also checks for the special command ~assert!~ which signals the input is an assertion or rule to be added to the database rather than a query.
+*** 4.4.3 Is Logic Programming Mathematical Logic?
+- The aim of logic programming is to provide the programmer with techniques for decomposing a computational problem into two separate problems:
+  - "what" is to be computed
+  - "how this should be computed
+- The ~not~ of programming languages reflects the so-called /closed world assumption/ that all relevant information has been included in the database.
+**** Exercises
+***** 4.64
+The system enters an infinite loop because of the "recursive" evaluation of the ~outranked-by~ rule in the body of the ~outranked-by~ rule. The query will become ~(outranked-by ?middle-manager ?boss)~ applied to a frame in which both ~?middle-manager~ and ~?boss~ are unbound to values. The evaluator will continue attempting to evaluate the rule with the unbound variables infintely, resulting in the loop.
+***** 4.65
+Oliver Warbucks is listed four times because he qualifies as a ~wheel~ for four people.
+***** 4.66
+Ben has just realized that the accumulation function won't work because there is no way to ensure the function only accumulates each value once. As seen above in 4.65 the result of the ~wheel~ query returned 4 duplicate results, the same happening for an accumulation function will produce an erroneous value.
+
+He could salvage the function if he were able to reliably determine if a value had already been used in the accumulation function and therefore could be ignored. He would need to track which ~?amount~ values corresponded to which specific ~?x~ values
+***** 4.67
+Skipped
+***** 4.68
+**Note** I'm not sure that this is correct, I'll need to test it after we implement the evaluator in 4.4.4
+#+BEGIN_SRC scheme
+(rule (reverse () ()))
+(rule (reverse (?u . ?v) ?y)
+      (append-to-form (reverse ?v ?z) (?u) ?y))
+#+END_SRC
+***** 4.69
+Skipped
+*** 4.4.4 Implementing the Query System
+**** 4.4.4.1 The Driver Loop and Instantiation
+- The driver loop reads input expressions.
+  - If the expression is a rule or assertion to be added to the database, then the information is added.
+  - Otherwise the expression is assumed to be a query.
+    - The driver passes the query to the evaluator together with an initial frame stream consisting of an empty frame.
+    - The result of the expression is a stream of frames that satisfy the query. The original query has its variables replaced with the stream bound values and is printed
+  - Before processing an input expression it is transformed syntactically into a form that makes the processing more efficient with ~query-syntax-process~
+**** 4.4.4.2 The Evaluator
+- The ~qeval~ procedure is the basic evaluator of the query system taking as inputs a query and a stream of frames and returning a stream of extended frames
+- ~simple-query~ handles simple queries, taking as arguments a simple query (a pattern) and a stream of frames and retuning a stream formed by extending each frame by all database matches of the query.
+  - The resulting stream is a large stream consisting of all the ways a frame from the original input can be extended to produce a match with the given pattern.
+- ~and~ queries are handled by the ~conjoin~ procedure as illustrated in figure 4.5 in the text
+- ~or~ queries (figure 4.6) are handled similarly to ~and~ queries, the output streams for the various disjuncts of the ~or~ are computed separately and then merged.
+- ~not~ is handled by attempting to extend each frame in the input stream to satisfy the query being negated and only including a frame in the output stream if it **cannot** be satisfied.
+- ~lisp-value~ is similar to ~not~. Each frame in the stream is used to instantiate the variables in the lisp expression (the predicate), the predicate is applied and the frames for which the predicate returns false are filtered out of the input stream.
+**** 4.4.4.3 Finding Assertions by Pattern Matching
+**** 4.4.4.4 Rules and Unification
+- ~apply-a-rule~ applies rules using the method outlined in section 4.4.2. It first augments its argument frame by unifying the rule conclusion with the pattern in the given frame. If this succeeds, it evaluates the rule body in this new frame.
+  - Before this happens the program renames all the variables in the rule with unique new names to prevent variables for different rule applications from becoming confused with each other.
+**** 4.4.4.5 Maintaining the Data Base
+- One important problem in designing logic programming languages is that of arranging things so that as few irrelevant data-base entries as possible will be examined in checking for a given pattern.
+  - In this system, all assertions are stored in one big stream. Addtionally, all assertions whose ~car~ is a constant symbol are stored in separate streams in a table indexed by the symbol.
+**** Exercises
+***** 4.70
+The purpose of the ~let~ bindings in the two procudures is to force their delayed values and avoid the creation of a circular stream (self-referential stream) which would result in an infinite stream, making it unusable as a data base for our purposes because the iteration through the stream would never complete.
+**** 4.4.4.6 Stream Operations
+**** 4.4.4.7 Query Syntax Procedures
+- ~query-syntax-process~ transforms pattern variables in the expression, which have the form ~?symbol~, into the internal format ~(? symbol)~. This increases the efficiency of query processing because it allows the system to check if an expression is a variable by checking whether the ~car~ of the expression is the symbol ~?~, rather than having to extract characters from the symbol.
+**** 4.4.4.8
+**** Exercises
+***** 4.71
+The ~simple-query~ and ~disjoin~ procedures are each recursive procedures. If the explicit ~delay~ was not used and ~stream-append~ was used instead the evaluation of the procedures could potentially recurse infinitely and never return a valid result.
+***** 4.72
+The procedures interleave the streams instead of appending them becaue that prevents one stream from providing all of the results. If we were to append the streams the first stream could potentially be an infinite stream which would result in the second or subsequent streams never having their results included in the output stream. By interleaving the streams we ensure that results from each of the streams are included in the final output stream.
+***** 4.73
+For a similar reason that ~delay~ is used explicitly above in 4.71. Without the use of ~delay~ the ~flatten-stream~ operation could recurse infinitely if provided an infinite stream as input and never return. By using ~delay~ the procedure returns a stream in which subsequent elements can be retrieved instead of potentially never returning from the procedure.
+***** 4.74
+#+BEGIN_SRC scheme
+(define (simple-stream-flatmap proc s)
+  (simple-flatten (stream-map proc s)))
+
+(define (simple-flatten stream)
+  (stream-map stream-car
+              (stream-filter (lambda (s) (not (stream-null? s))) stream)))
+#+END_SRC
+
+No the behavior will not be changed with this version of ~stream-flatmap~ because the ~stream-car~ operation will take the first element from each stream when building the output stream before proceeding on to map over the ~stream-cdr~ of the input streams to continue building the output stream, thus interleaving the streams in the process.
+***** 4.75
+Skipped
+***** 4.76
+Skipped
+***** 4.77
+Skipped
+***** 4.78
+Skipped
+***** 4.79
+Skipped
