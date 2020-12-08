@@ -1,0 +1,476 @@
+* Chapter 5 - Computing with Register Machines
+- A /register machine/ (a computer) sequentially executes /instructions/ that manipulate the contents of a fixed set of storage elements called /registers/
+  - A typical register machine instruction applies a primitive operation to the contents of some registers and assigns the result to another register.
+** 5.1 Designing Register Machines
+- To design a register machine, we must design its /data path/ (registers and operations) and the /controller that sequences these operations.
+**** Exercises
+***** 5.1
+Diagramming done on paper. Description below:
+
+'product' and 'counter' registers with two operations, 'multiply' and 'increment' that store their results in temporary registers 't1' and 't2' respectively. The inputs to 'multiply' are 'product' and 'counter' and the result is stored in 't1'. The inputs to 'increment' are 'counter' and the constant value '1' and the result is stored in 't2'. There is a test for whether 'counter' is greater than the register that stores 'n'.
+The controller diagram starts with the greater-than test, if the test passes we are done, if not we proceed in the following order: move the value store in 't1' to the 'product' register, move the value stored in 't2' to the 'counter' register and repeat the test.
+*** 5.1.1 A Language for Describing Register Machines
+- The controller of a machine is defined as a sequence of /instructions/ together with /labels/ that identify /entry points/ in the sequence.
+  - Instructions are one of:
+    - The name of a data-path button to push to assign a value to a register
+    - A ~test~ instruction that performs a specified test
+    - A conditional branch (~branch~ instruction) to a location indicated by a controller label, based on the result of the previous test
+      - If the test fails the controller should continue with the next instruction in the sequence, otherwise it should continue with the instruction after the label.
+    - An unconditional branch (~goto~ instruction) naming a controller label at which to continue execution
+- The machine starts at the beginning of the controller instruction sequence and stos when execution reaches the end of the sequence.
+**** Exercises
+***** 5.2
+#+BEGIN_SRC
+(controller
+ test-counter
+   (test (op >) (reg counter) (const 0))
+   (branch (label fact-done))
+   (assign t1 (op multiply) (reg product) (reg counter))
+   (assign t2 (op increment) (reg counter) (const 1))
+   (assign product (reg t1))
+   (assign counter (reg t2))
+   (goto (label test-counter))
+ fact-done)
+#+END_SRC
+*** 5.1.2 Abstraction in Machine Design
+**** Exercises
+***** 5.3
+Diagrams drawn on paper. Controller definition below:
+
+#+BEGIN_SRC
+(controller
+ test-guess
+   (goto (label good-enough))
+ improve
+   (assign div-res (op /) (reg x) (reg guess))
+   (assign t2 (op average) (reg div-res) (reg guess))
+   (assign guess (reg t2))
+ good-enough
+   (assign square-res (op square) (reg guess))
+   (assign t1 (op -) (reg x) (reg square-res))
+   (test (op >) (reg t1) (const 0.001))
+   (branch (label good-enough-done))
+   (goto (label improve))
+ good-enough-done
+   (assign guess (reg t1))
+ sqrt-done)
+#+END_SRC
+*** 5.1.3 Subroutines
+- Similar sequences of instructions in the controller can be replaced by a single sequence, a /subroutine/.
+  - To enable the use of subroutines we need to know which label to continue execution at when the subroutine completes, this can be accomplished using a special /continue/ register.
+*** 5.1.4 Using a Stack to Implement Recursion
+- When solving a recursive subproblem the machine needs to save the contents of any registers that will be needed after the subproblem is solved in order to be able to continue the suspended computation.
+  - These values must be restored in the reverse of teh order in which they were saved, since in a nest of recursions the last subproblem to be entered is the first to be finished.
+    - This dictates the use of a /stack/, or "last in, first out" data structure, to save register values
+**** Exercises
+***** 5.4
+Diagrams done on paper, controller instruction sequences below
+****** a
+#+BEGIN_SRC
+(controller
+   (assign continue (label expt-done)) ;; set up final return address
+ expt-loop                           ;; expt loop
+   (test (op =) (reg n) (const 0))
+   (branch (label base-case))
+   (save continue)                     ;; save the continue label on the stack.
+   ;; No need to save 'n' because it is just a counter and not needed in further computation
+   (assign n (op -) (reg n) (const 1))
+   (assign continue (label after-expt))
+   (goto (label expt-loop))
+ after-expt
+   (restore continue)
+   (assign val (op *) (reg b) (reg val))
+   (goto (reg continue))
+ base-case                           ;; base-case
+   (assign val (const 1))
+   (goto (reg continue))
+ expt-done)
+#+END_SRC
+****** b
+#+BEGIN_SRC
+(controller
+   (assign counter (reg n))
+   (assign product (const 1))
+ expt-loop
+   (test (op =) (reg counter) (const 0))
+   (branch (label expt-done))
+   (assign product (op *) (reg product) (reg b))
+   (assign counter (op -) (reg counter) (const 1))
+   (goto expt-loop)
+ expt-done)
+#+END_SRC
+***** 5.5
+Skipped
+***** 5.6
+The extra ~save~ and ~restore~ instructions in the Fibonacci machine in Figure 5.12 are for the ~n~ register. Since ~n~ is just storing a counter and is not needed to perform the computations of the Fibonacci value -- it is just needed to determine when we've reached out base case -- there is no need to keep track of it on the stack. The two values we need to keep track of are the ~continue~ label and the ~val~ accumulation.
+*** 5.1.5 Instruction Summary
+** 5.2 A Register-Machine Simulator
+**** Exercises
+***** 5.7
+Skipped, we do not have the simulator for the machine yet.
+*** 5.2.1 The Machine Model
+- The basic machine model, constructed in ~make-machine~ by the ~make-new-machine~ procedure, is essentially a container for some registers and a stack together with an execution mechanism that processes the controller instructions one by one.
+  - ~make-machine~ then extends this basic model to include the registers, operations, and controller of the particular machine being defined.
+    - It uses an /assembler/ to transform the controller list into instructions for the new machine and installs these as the machine's instruction sequence.
+*** 5.2.2 The Assembler
+- The assembler transforms the sequence of controller expressions for a machine into a corresponding list of machine instructions, each with its execution procedure.
+**** Exercises
+***** 5.8
+With the simulator written as-is, the contents of register ~a~ will be ~4~ because the second ~here~ label entry will be created and will be placed in front of the first ~here~ label entry in the labels table during assembly, thus when the program is executied the instructions under ~start~ will be executed and the ~goto~ instruction will lookup the second ~here~ label (which is first in the label table) and execute instructions starting from that label, assigning ~a~ to be ~4~.
+
+To avoid this we need to signal an error if we attempt to define duplicate labels.
+#+BEGIN_SRC scheme
+(define (extract-labels text receive-proc)
+  (if (null? text)
+      (receive-proc '() '())
+      (extract-labels (cdr text)
+                      (lambda (insts labels)
+                        (let ((next-inst (car text)))
+                          (if (symbol? next-inst)
+                              (let ((val (assoc next-inst labels)))
+                                (if val
+                                    (error "Already defined label -- ASSEMBLE" next-inst)
+                                    (receive-proc insts
+                                             (cons (make-label-entry next-inst
+                                                                     insts)
+                                                   labels))))
+                              (receive-proc (cons (make-instruction next-inst)
+                                                  insts)
+                                            labels)))))))
+#+END_SRC
+*** 5.2.3 Generating Execution Procedures for Instructions
+- For each type of instruction in the register-machine language there is a generator that builds an appropriate execution procedure.
+  - The details of these procedures determine both the syntax and meaning of the individual instructions in the register-machine language.
+  - We use data abstraction to isolate the detailed syntax of register-machine expressions from the general execution mechanisms by using syntax procedures to extract and classify the parts of an instruction.
+**** Exercises
+***** 5.9
+#+BEGIN_SRC scheme
+(define (make-operation-exp exp machine labels operations)
+  (let ((op (lookup-prim (operation-exp-op exp) operations))
+        (aprocs
+         (map (lambda (e)
+                (if (label-exp? e)
+                    (error "Operations can only be used with register and constant operands -- ASSEMBLE" e)
+                    (make-primitive-exp e machine labels)))
+              (operation-exp-operands exp))))
+    (lambda ()
+      (apply op (map (lambda (p) (p)) aprocs)))))
+#+END_SRC
+***** 5.10
+Skipping the creation of a new syntax
+***** 5.11
+****** a
+We can replaces the following instructions:
+#+BEGIN_SRC scheme
+afterfib-n-2
+  (assign n (reg val))
+  (restor val)
+  ...
+#+END_SRC
+With ~(restore n)~. At this point in the program the saved value of ~n~ is equal to ~Fib(n-2)~ and ~val~ is equal to ~Fib(n-1)~. Instead of shifting the values around if we restore into ~n~ that last value on the stack, ~Fib(n-2)~, then the procedures below will still be computing ~Fib(n-1) + Fib(n-2)~.
+****** b
+#+BEGIN_SRC scheme
+(define (make-register name)
+  (let ((contents '*unassigned*))
+    (define (dispatch message)
+      (cond ((eq? message 'get) contents)
+            ((eq? message 'set)
+             (lambda (value) (set! contents value)))
+            ((eq? message 'name) name)  ;; add a dispatch to return the name given to the register
+            (else
+             (error "Unknown request -- REGISTER" message))))
+    dispatch))
+
+;; helper function to get a register's name
+(define (get-register-name reg)
+  ((reg 'name)))
+
+(define (make-save inst machine stack pc)
+  (let ((reg (get-register machine
+                           (stack-inst-reg-name inst))))
+    (lambda ()
+      (push stack (cons (get-register-name reg) (get-contents reg)))
+      (advance-pc pc))))
+
+(define (make-restore inst machine stack pc)
+  (let ((reg (get-register machine
+                           (stack-inst-reg-name inst))))
+    (lambda ()
+      (if (equal? (stack-inst-reg-name)
+                  (get-register-name reg))
+          (begin
+            (set-contents! reg (cadr (pop stack))) ;; get the value since we are pushing a pair onto the stack now
+            (advance-pc pc))
+          (error "Attempting to restore to different register -- ASSEMBLE" reg)))))
+#+END_SRC
+****** c
+#+BEGIN_SRC scheme
+(define (make-register name)
+  (let ((contents '*unassigned*)
+        (stack (make-stack)))  ;; add a local stack to the register
+    (define (dispatch message)
+      (cond ((eq? message 'get) contents)
+            ((eq? message 'set)
+             (lambda (value) (set! contents value)))
+            ;; add a dispatch message to initialize the stack
+            ((eq? message 'initialize-stack)
+             (lambda () (stack 'initialize)))
+            ((eq? message 'stack) stack)
+            (else
+             (error "Unknown request -- REGISTER" message))))
+    dispatch))
+
+(define (make-new-machine)
+  (let ((pc (make-register 'pc))
+        (flag (make-register 'flag))
+        ;; remove the machine stack in favor of register local stacks
+        (the-instruction-sequence '()))
+    (let ((register-table
+            (list (list 'pc pc) (list 'flag flag))))
+      (let ((the-ops
+             (list (list 'initialize-stack (lambda ()
+                                             ;; For each register allocated in the machine initialize the register's local stack
+                                             (for-each (lambda (reg) (reg 'initialize-stack)))
+                                             (map (lambda (reg-table-entry) (cadr reg-table-entry))
+                                                  register-table))))))
+       (define (allocate-register name) ...)
+       ))))
+
+;; update save and restore to reference the register's local stack
+(define (make-save inst machine stack pc)
+  (let ((reg (get-register machine
+                           (stack-inst-reg-name inst))))
+    (lambda ()
+      (push (reg 'stack) (get-contents reg))
+      (advance-pc pc))))
+
+(define (make-restore inst machine stack pc)
+  (let ((reg (get-register machine
+                           (stack-inst-reg-name inst))))
+    (lambda ()
+      (set-contents! reg (pop (reg 'stack)))
+      (advance-pc pc))))
+#+END_SRC
+***** 5.12
+The full methods that were added or updated for the exercise in the machine simulator are included below:
+#+BEGIN_SRC scheme
+;; Ex 5.12 insert into a sorted list
+;; for keeping track of instructiions etc
+(define (insert-expr exp list)
+  (cond ((null? list) (cons exp list))
+        ((not (equal? exp (car list)))
+         (cons (car list) (insert-expr exp (cdr list))))))
+
+(define (insert-sorted inst list)
+  (cond ((null? list) (cons inst '()))
+        ((eq? inst (car list)) list)
+        ((symbol<? inst (car list))
+         (cons inst list))
+        (else (cons (car list) (insert inst (cdr list))))))
+
+(define (make-register name)
+  (let ((contents '*unassigned*)
+        (value-sources '()))
+    (define (add-value-source value-expr)
+      (set! value-sources (insert-expr value-expr value-sources)))
+    (define (dispatch message)
+      (cond ((eq? message 'get) contents)
+            ((eq? message 'set)
+             (lambda (value) (set! contents value)))
+            ((eq? message 'name) name) ;; Ex 5.12
+            ((eq? message 'add-value-source) add-value-source)  ;; Ex 5.12
+            ((eq? message 'get-value-sources) value-sources) ;; Ex 5.12
+            (else
+             (error "Unknown request -- REGISTER" message))))
+    dispatch))
+
+(define (get-register-name register)
+  (register 'name))
+
+;; ...
+
+(define (make-new-machine)
+  (let ((pc (make-register 'pc))
+        (flag (make-register 'flag))
+        (stack (make-stack))
+        (the-instruction-sequence '())
+        (seen-instructions '())       ;; ex 5.12
+        (goto-registers '())          ;; ex 5.12
+        (save-restore-registers '())) ;; ex 5.12
+    (let ((the-ops
+           (list (list 'initialize-stack (lambda () (stack 'initialize)))))
+          (register-table
+           (list (list 'pc pc) (list 'flag flag))))
+      (define (allocate-register name)
+        (if (assoc name register-table)
+            (error "Multiply defined register: " name)
+            (set! register-table
+                  (cons (list name (make-register name))
+                        register-table)))
+        'register-allocated)
+      (define (lookup-register name)
+        (let ((val (assoc name register-table)))
+          (if val
+              (cadr val)
+              (error "Unknown register: " name))))
+      (define (execute)
+        (let ((insts (get-contents pc)))
+          (if (null? insts)
+              'done
+              (begin
+                ((instruction-execution-proc (car insts)))
+                (execute)))))
+      ;; Ex 5.12 --
+      (define (add-instruction inst)
+        (set! seen-instructions (insert-sorted inst seen-instructions)))
+      (define (add-goto-reg reg)
+        (set! goto-registers (insert-sorted reg goto-registers)))
+      (define (add-save-restore-reg reg)
+        (set! save-restore-registers (insert-sorted reg save-restore-registers)))
+      (define (register-value-sources)
+        (map (lambda (reg-table-entry)
+                    (let ((register (cadr reg-table-entry))
+                          (reg-label (car reg-table-entry)))
+                      (cons reg-label (register 'get-value-sources))))
+                  register-table))
+      ;; -- end Ex 5.12 procedures
+      (define (dispatch message)
+        (cond ((eq? message 'start)
+               (set-contents! pc the-instruction-sequence)
+               (execute))
+              ((eq? message 'install-instruction-sequence)
+               (lambda (seq) (set! the-instruction-sequence seq)))
+              ((eq? message 'allocate-register) allocate-register)
+              ((eq? message 'get-register) lookup-register)
+              ((eq? message 'install-operations)
+               (lambda (ops) (set! the-ops (append the-ops ops))))
+              ((eq? message 'stack) stack)
+              ((eq? message 'operations) the-ops)
+              ;; -- Ex 5.12
+              ((eq? message 'add-inst) add-instruction)
+              ((eq? message 'add-goto-reg) add-goto-reg)
+              ((eq? message 'add-save-restore) add-save-restore-reg)
+              ((eq? message 'seen-instructions) seen-instructions)
+              ((eq? message 'goto-registers) goto-registers)
+              ((eq? message 'save-restore-registers) save-restore-registers)
+              ((eq? message 'register-value-sources) (register-value-sources))
+              ;; end Ex 5.12 --
+              (else (error "Unknown request -- MACHINE" message))))
+      dispatch)))
+
+;; ...
+
+(define (make-execution-procedure inst labels machine pc flag stack ops)
+  ((machine 'add-inst) (car inst)) ;; Ex 5.12
+  (cond ((eq? (car inst) 'assign)
+         (make-assign inst machine labels ops pc))
+        ((eq? (car inst) 'test)
+         (make-test inst machine labels ops flag pc))
+        ((eq? (car inst) 'branch)
+         (make-branch inst machine labels flag pc))
+        ((eq? (car inst) 'goto)
+         (make-goto inst machine labels pc))
+        ((eq? (car inst) 'save)
+         (make-save inst machine stack pc))
+        ((eq? (car inst) 'restore)
+         (make-restore inst machine stack pc))
+        ((eq? (car inst) 'perform)
+         (make-perform inst machine labels ops pc))
+        (else (error "Unknown instruction type -- ASSEMBLE" inst))))
+
+(define (make-goto inst machine labels pc)
+  (let ((dest (goto-dest inst)))
+    (cond ((label-exp? dest)
+           (let ((insts
+                  (lookup-label labels
+                                (label-exp-label dest))))
+             (lambda () (set-contents! pc insts))))
+          ((register-exp? dest)
+           (let ((reg
+                  (get-register machine
+                                (register-exp-reg dest))))
+             ((machine 'add-goto-reg) (get-register-name reg)) ;; Ex 5.12
+             (lambda ()
+               (set-contents! pc (get-contents reg)))))
+          (else (error "Bad GOTO instruction -- ASSEMBLE"
+                       inst)))))
+
+(define (make-save inst machine stack pc)
+  (let ((reg (get-register machine
+                           (stack-inst-reg-name inst))))
+    ((machine 'add-save-restore) (get-register-name reg)) ;; Ex 5.12
+    (lambda ()
+      (push stack (get-contents reg))
+      (advance-pc pc))))
+
+(define (make-restore inst machine stack pc)
+  (let ((reg (get-register machine
+                           (stack-inst-reg-name inst))))
+    ((machine 'add-save-restore) (get-register-name reg)) ;; Ex 5.12
+    (lambda ()
+      (set-contents! reg (pop stack))
+      (advance-pc pc))))
+
+#+END_SRC
+
+Code to test the changes to the simulator above to record instructions:
+#+BEGIN_SRC scheme
+(define fib-controller
+  '(controller
+    (assign continue (label fib-done))
+    fib-loop
+    (test (op <) (reg n) (const 2))
+    (branch (label immediate-answer))
+    (save continue)
+    (assign continue (label afterfib-n-1))
+    (save n)
+    (assign n (op -) (reg n) (const 1))
+    (goto (label fib-loop))
+    afterfib-n-1
+    (restore n)
+    (restore continue)
+    (assign n (op -) (reg n) (const 2))
+    (save continue)
+    (assign continue (label afterfib-n-2))
+    (save val)
+    (goto (label fib-loop))
+    afterfib-n-2
+    (assign n (reg val))
+    (restore val)
+    (restore continue)
+    (assign val (op +) (reg val) (reg n))
+    (goto (reg continue))
+    immediate-answer
+    (assign val (reg n))
+    (goto (reg continue))
+    fib-done))
+
+(define fib-machine
+  (make-machine
+   '(n continue val)
+   (list (list '- -) (list '+ +) (list '< <))
+   fib-controller))
+
+(display (fib-machine 'seen-instructions))
+(display (fib-machine 'goto-registers))
+(display (fib-machine 'save-restore-registers))
+(display (fib-machine 'register-value-sources))
+#+END_SRC
+***** 5.13
+Skipped
+*** 5.2.4 Monitoring Machine Performance
+- Simulation is useful not only for verifying the correctness of a proposed machine design but also for measuring the machine's performance.
+**** Exercises
+***** 5.14
+Skipped
+***** 5.15
+Included in the machine simulator with comments marking the exercise around the added code.
+***** 5.16
+Included in the machine simulator with comments marking the exercise around the added code.
+***** 5.17
+Included in the machine simulator with comments marking the exercise around the added code.
+***** 5.18
+Included in the machine simulator with comments marking the exercise around the added code.
+***** 5.19
+Included in the machine simulator with comments marking the exercise around the added code. Skipped the ~cancel-breakpoint~ part.
+** 5.3 Storage Allocation and Garbage Collection
