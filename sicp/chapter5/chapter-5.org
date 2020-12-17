@@ -474,3 +474,192 @@ Included in the machine simulator with comments marking the exercise around the 
 ***** 5.19
 Included in the machine simulator with comments marking the exercise around the added code. Skipped the ~cancel-breakpoint~ part.
 ** 5.3 Storage Allocation and Garbage Collection
+- Lisp systems provide an /automatic storage allocation/ /facility to support the illusion of an infinite memory.
+  - When a data object is no longer needed, the memory allocated to it is automatically recycled and used to construct new data objects.
+  - One such technique for achieving this is /garbage collection/
+*** 5.3.1 Memory as Vectors
+- Typical memory systems provide two primitive operations: one that fetches the data stored in a specified location and one that assignes hnew data to a specified location
+- Many important data operations require that memory addresses (locations of data in memory) be treated as data which can be stored in memory locations and manipulated in machine registers; /address arithmetic/.
+- To model computer memory, we use a data structure called a /vector/
+  - Abstractly a vecotr is a compound data object whose individual data elements can be accesses by means of an integer index in an amount of time that is independent of the index
+    - This is not the same as a list where the access time is _not_ independent of the index since accessing the nth element of a list requires n - 1 ~cdr~ operations
+  - For computer memory, this access can be implemented through the use of address arithmetic to combine a /base address/ that specifies the beginning location of a vector in memory with an /index/ that specifies the offset of a particular element in the vector
+- In our example, since we want two instances of a symbol to be recognized as the "same" symbol by ~eq?~ and we want ~eq?~ to be a simple test for equality of pointers we must ensure that if the reader sees the same character string twice it will use the same points (to the same sequence of characters) to represent both occurrences.
+  - To accomplish this the reader maintains a table -- traditionally called the /obarray/ -- of all the symbols is has ever encountered. When the reader encounters a characters string it looks in the /obarray/ table to see if it has seen the same characters string every before and if it has it returns the pointer stored in the obarray, if it has not it uses the sequence of characters to constuct a new symbol and enters the pointer in the obarray.
+    - This process of replacing character strings by unique pointers is called /interning/ symbols.
+**** Exercises
+***** 5.20
+Done on paper.
+***** 5.21
+****** a
+Not sure about the difference between this an b yet?
+****** b
+#+BEGIN_SRC scheme
+(define count-leaves-machine
+  (make-machine
+   '(count node left right continue)
+   (list (list '+ +) (list '= =) (list 'eq? eq?) (list 'null? null?) (list 'pair? pair?) (list 'car car) (list 'cdr cdr))
+   '(controller
+     (assign count (const 0))
+     (assign continue (label done))
+
+     tree-loop
+     (test (op null?) (reg node))
+     (branch (label null-node))
+     (test (op pair?) (reg node))
+     (branch (label count-left))
+     (goto (label non-pair))
+
+     count-left
+     (save continue)
+     (save node)
+     (assign continue (label count-right))
+     (assign node (op car) (reg node))
+     (goto (label tree-loop))
+
+     count-right
+     (restore node)
+     (restore continue)
+     (assign node (op cdr) (reg node))
+     (goto (label tree-loop))
+
+     null-node
+     (goto (reg continue))
+
+     non-pair
+     (assign count (op +) (reg count) (const 1))
+     (goto (reg continue))
+
+     done)))
+
+(set-register-contents! count-leaves-machine 'node '(a (b c (d)) (e f) g))
+(start count-leaves-machine)
+(get-register-contents count-leaves-machine 'node)
+(get-register-contents count-leaves-machine 'count)
+#+END_SRC
+***** 5.22
+#+BEGIN_SRC scheme
+(define append-machine
+  (make-machine
+   '(one two tmp ltmp output continue)
+   (list (list 'null? null?) (list 'car car) (list 'cdr cdr) (list 'cons cons))
+   '(start
+     (assign ltmp (reg one))
+     (assign continue (label done))
+     (assign output (reg two))
+
+     iter
+     (test (op null?) (reg ltmp))
+     (branch (label build-list))
+     (save continue)
+     (assign continue (label build-list))
+     (assign tmp (op car) (reg ltmp))
+     (save tmp)
+     (assign ltmp (op cdr) (reg ltmp))
+     (goto (label iter))
+
+     build-list
+     (restore tmp) ;; get value off stack
+     (assign output (op cons) (reg tmp) (reg output))
+     (restore continue)
+     (goto (reg continue))
+
+     done)
+   ))
+
+(set-register-contents! append-machine 'one '(1 2 3))
+(set-register-contents! append-machine 'two '(4 5 6))
+(start append-machine)
+(get-register-contents append-machine 'output)
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(define append-splice-machine
+  (make-machine
+   '(one two car-one)
+   (list (list 'null? null?) (list 'car car) (list 'cdr cdr) (list 'cons cons))
+   '(controller
+
+     iter
+     (save car-one)
+     (test (op null?) (reg one))
+     (branch (label append))
+     (assign car-one (op car) (reg one))
+     (assign one (op cdr) (reg one))
+     (goto (label iter))
+
+     append
+     (restore car-one)
+     (test (op null?) (reg car-one))
+     (branch (label done))
+     (assign two (op cons) (reg car-one) (reg two))
+     (goto (label append))
+
+     done
+     )))
+
+(set-register-contents! append-splice-machine 'one '(1 2 3))
+(set-register-contents! append-splice-machine 'two '(4 5 6))
+(set-register-contents! append-splice-machine 'car-one '())
+(start append-splice-machine)
+(get-register-contents append-splice-machine 'one)
+(get-register-contents append-splice-machine 'two)
+#+END_SRC
+The resulting appended list is in register ~two~
+*** 5.3.2 Maintaining the Illusion of Infinite Memory
+- In order to recycle pairs we must have a way to determine which allocated pairs are not needed (in the sense that their contents can no longer influence the future of the computation).
+- A method for accomplishing this is called /garbage collection/
+  - Garbage collection is based on the observation that, at any moment in a Lisp program interpretation, the only objects that can affect the future of the computation are those that can be reached by some succession of ~car~ and ~cdr~ operations starting from the pointers that are currently in the machine registers. Any memory cell that is not so accessible may be recycled.
+    - One method of garbage collection is /stop-and-copy/ in which memory is divided into two halves, "working memory" and "free memory". ~cons~ constructs pairs by allocating in working memory and when working memory is full garbage collection is performed in which we locate all the useful pairs in working memory and copy them to the "free memory" segment. After this is done the two memory segments responsibilities are swapped and working memory becomes the new free memory, and vice versa
+      - Another advantage of the /stop-and-copy/ GC method is that it is a /compacting/ garbage collection method; meaning at the end of the garbage collection phase all the useful data will be moved over to consecutive memory locations
+- Example of /stop-and-copy/ as register machine instructions
+#+BEGIN_SRC scheme
+begin-garbage-collection
+  (assign free (const 0))
+  (assign scan (const 0))
+  (assign old (reg root)) ;;  old root
+  (assign relocate-continue (label reassign-root))
+  (goto (label relocate-old-result-in-new))
+reassign-root
+  (assign root (reg new))
+  (goto (label gc-loop))
+gc-loop
+  (test (op =) (reg scan) (reg free))
+  (branch (label gc-flip)) ;; pointers 'free' and 'scan' are the same, gc is done, cleanup
+  (assign old (op vector-ref) (reg new-cars) (reg scan))
+  (assign relocate-continue (label update-car))
+  (goto (label relocate-old-results-in-new))
+update-car
+  (perform
+   (op vector-set!) (reg new-cars) (reg scan) (reg new))
+  (assign old (op vector-ref) (reg new-cdrs) (reg scan))
+  (assign relocate-continue (label update-cdr))
+  (goto (label relocate-old-result-in-new))
+relocate-old-results-in-new
+  (test (op pointer-to-pair?) (reg old)) ;; does the pointer in 'old' represent a pair that needs to be moved?
+  (branch (label pair)) ;; it does represent a pair, move the pair
+  (assign new (reg old)) ;; it doesn't represent a pair, a number perhaps, so we don't need to move it, return the pointer in the 'new' register
+  (goto (reg relocate-continue))
+pair
+  (assign oldcr (op vector-ref) (reg the-cars) (reg old))
+  (test (op broken-heart?) (reg oldcr))
+  (branch (label already-moved))
+  (assign new (reg free)) ;; new location for pair
+  ;; Update free pointer
+  (assign free (op +) (reg free) (const 1))
+  (perform (op vector-set!)
+           (reg the-cars) (reg new) (reg oldcr)) ;; set the nth value, which is held by new and references the previous free pointer value, to the value of oldcr
+  (perform
+   (op vector-set!) (reg the-cdrs) (reg old) (reg new)) ;; set the forwarding address in the old cdr cell to the cell in the new cars
+  (goto (reg relocate-continue))
+already-moved
+  (assign new (op vector-ref) (reg the-cdrs) (reg old))
+  (goto (reg relocate-continue))
+gc-flip
+  (assign temp (reg the-cdrs))
+  (assign the-cdrs (reg new-cdrs))
+  (assign new-cdrs (reg temp))
+  (assign temp (reg the-cars))
+  (assign the-cars (reg new-cars))
+  (assign new-cars (reg temp))
+#+END_SRC

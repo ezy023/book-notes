@@ -571,42 +571,42 @@
         (error "Unknown operation -- ASSEMBLE" symbol))))
 
 ;; -- Exercise 5.12 --
-(define fib-controller
-  '(controller
-      (assign n (const 8))
-      (assign continue (label fib-done))
-    fib-loop
-      (test (op <) (reg n) (const 2))
-      (branch (label immediate-answer))
-      (save continue)
-      (assign continue (label afterfib-n-1))
-      (save n)
-      (assign n (op -) (reg n) (const 1))
-      (goto (label fib-loop))
-    afterfib-n-1
-      (restore n)
-      (restore continue)
-      (assign n (op -) (reg n) (const 2))
-      (save continue)
-      (assign continue (label afterfib-n-2))
-      (save val)
-      (goto (label fib-loop))
-    afterfib-n-2
-      (assign n (reg val))
-      (restore val)
-      (restore continue)
-      (assign val (op +) (reg val) (reg n))
-      (goto (reg continue))
-    immediate-answer
-      (assign val (reg n))
-      (goto (reg continue))
-    fib-done))
+;; (define fib-controller
+;;   '(controller
+;;       (assign n (const 8))
+;;       (assign continue (label fib-done))
+;;     fib-loop
+;;       (test (op <) (reg n) (const 2))
+;;       (branch (label immediate-answer))
+;;       (save continue)
+;;       (assign continue (label afterfib-n-1))
+;;       (save n)
+;;       (assign n (op -) (reg n) (const 1))
+;;       (goto (label fib-loop))
+;;     afterfib-n-1
+;;       (restore n)
+;;       (restore continue)
+;;       (assign n (op -) (reg n) (const 2))
+;;       (save continue)
+;;       (assign continue (label afterfib-n-2))
+;;       (save val)
+;;       (goto (label fib-loop))
+;;     afterfib-n-2
+;;       (assign n (reg val))
+;;       (restore val)
+;;       (restore continue)
+;;       (assign val (op +) (reg val) (reg n))
+;;       (goto (reg continue))
+;;     immediate-answer
+;;       (assign val (reg n))
+;;       (goto (reg continue))
+;;     fib-done))
 
-(define fib-machine
-  (make-machine
-   '(n continue val)
-   (list (list '- -) (list '+ +) (list '< <))
-   fib-controller))
+;; (define fib-machine
+;;   (make-machine
+;;    '(n continue val)
+;;    (list (list '- -) (list '+ +) (list '< <))
+;;    fib-controller))
 
 ;; (define gcd-machine
 ;;   (make-machine
@@ -627,13 +627,13 @@
 ;; (display (fib-machine 'register-value-sources))
 
 ;; -- end Exercise 5.12 --
-(fib-machine 'trace-on)
-((fib-machine 'trace-register-on) ((fib-machine 'get-register) 'n)) ;; Ex 5.18
-;; (set-breakpoint fib-machine '(branch (label immediate-answer)) 3) ;; Ex 5.19
-(fib-machine 'start)
-(get-register-contents fib-machine 'n)
-(get-register-contents fib-machine 'continue)
-(get-register-contents fib-machine 'val)
-(get-register-contents fib-machine 'pc)
+;; (fib-machine 'trace-on)
+;; ((fib-machine 'trace-register-on) ((fib-machine 'get-register) 'n)) ;; Ex 5.18
+;; ;; (set-breakpoint fib-machine '(branch (label immediate-answer)) 3) ;; Ex 5.19
+;; (fib-machine 'start)
+;; (get-register-contents fib-machine 'n)
+;; (get-register-contents fib-machine 'continue)
+;; (get-register-contents fib-machine 'val)
+;; (get-register-contents fib-machine 'pc)
 ;; (proceed-machine fib-machine)
 ;; (display (fib-machine 'executed-instruction-count))
