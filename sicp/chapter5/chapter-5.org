@@ -663,3 +663,142 @@ gc-flip
   (assign the-cars (reg new-cars))
   (assign new-cars (reg temp))
 #+END_SRC
+** 5.4 The Explicit-Control Evaluatore
+- The /explicit control evaluator/ in this section shows how the underlying procedure-calling and argument-passing mechanisms used in the evaluation process can be described in terms of operations on registers and stacks.
+- The evaluator register machine here contains a stack and seven registers
+  - ~exp~ is used to hold the expression to be evaluated
+  - ~env~ contains the environment in which the evaluation is performed
+  - ~val~ contains teh value obtained by evaluating the expression in the designated environment, at the end of evaluation
+  - ~continue~ is used to implement recursion
+  - ~proc~ used in evaluating combinations
+  - ~argl~ used in evaluating combinations
+  - ~unev~ used in evaluating combinations
+*** 5.4.1 The Core of the Explicit-Control Evaluator
+- In our controller the dispatch is written as a sequence of ~test~ and ~branch~ instructions. Alternatively it could have been written in a data-directed style to avoid the need to perform sequential tests and to facilitate the definition of new expression types.
+- By the time we get to ~apply-dispatch~ the ~proc~ register contains the procedure to apply and ~argl~ contains the list of evaluated arguments to which it must be applied.
+- To specify how the machine handles primitives we would have to provide a sequence of controller instructions to implement each primitive and arrange for ~primitive-apply~ to dispatch to the instructions for the primitive identified by the contents of ~proc~. Instead in this example we just us the underlying Scheme system to apply the procedure (~proc~) to the arguments (~argl~).
+- To apply a compound procedure we first construct a frame that binds the procedure's parameters to the arguments, use this frame to extend the environment carried by the procedure, and evaluate in this extended environment the sequence of expressions that forms the body of the procedure.
+*** 5.4.2 Sequence Evaluation and Tail Recursion
+- An evaluator that can execute a procedure without requiring increasing storage as the procedure continues to call itself is called a /tail-recursive/ evaluator.
+  - The evaluator in this example is tail-recursive because in order to evaluate the final expression of a sequence we transfer directly to ~eval-dispatch~ without saving any information on the stack.
+    - Evaluating the final expression in a sequence will not cause any information to be accumulated on the stack
+    - The implementation of tail recursion in ~ev-sequence~ is one variety of a well-known optimization technique used by many compilers. In compiling a procedure that ends with a procedure call, one can replace the call by a jump to the called procedure's entry point.
+    - Without a tail-recursive implementation, procedure evaluation will require space proportional to the number of iterations rather than requiring constant space as it would in a tail-recursive implementation. This difference can result is procedure evaluation using up the space allocated for the stack.
+*** 5.4.3 Conditionals, Assignments, and Definitions
+- Special forms are handled by selectively evaluating fragments of the expression
+**** Exercises
+***** 5.23
+#+begin_src scheme
+ev-let
+  (assign exp (op let->lambda) (reg exp)) ;; transform the let expression in 'exp' to a sequence of lambda expressions
+  (goto (label eval-dispatch))
+ev-cond
+  (assign exp (op cond->if) (reg exp)) ;; transform cond into sequence of if expressions and eval
+  (goto (label eval-dispatch))
+#+end_src
+***** 5.24
+Skipped
+***** 5.25
+Skipped
+*** 5.4.4 Running the Evaluator
+- Simulations can be a powerful tool to guid the implementation of evaluators.
+  - They make it easy to explore variations of the register-machine design and also monitor the performance of the simulated evaluator
+**** Exercises
+***** 5.26
+Skipped
+***** 5.27
+Skipped
+***** 5.28
+Skipped
+***** 5.29
+Skipped
+***** 5.30
+Skipped
+** 5.5 Compilation
+- Commercial general-purpose computers are register machines organized around a collection of registers and operations that constitute an efficient and convenient universal set of data paths.
+- The controller for general-purpose machineis an interpreter for a register-machine language like the one we have been using.
+  - This language is called the /native language/ of the machine, the /machine language/
+- There are two common strategies for bridging the gap between higher-level languages and machine-languages.
+  - **Interpretation** - an interpreter written in the native language of a machine configures the machine to execute programs written in a language --  the /source language/ -- that may differ from the native language of the machine.
+    - Primitive procedures of the source language are implemented as a library of subroutines written in the native language of the given machine.
+    - A program to be interpreted is represented as a data structure that the interpreter traverses, analyzing the source program, and while doing so it simulates the intended behavior of the source program by calling approriate primitive subroutines from the library
+  - **Compilation** - a compiler for a given source language and machine translates a source program into an equivalent program -- called the /object program/ -- written in the machine's native language.
+- Compilation can provide a great increase in the efficiency of program execution. On the other hand interpretation provides a more powerful environment for interactive program development and debugging becuase the source program being executed is available at run time to be examined and modified.
+*** 5.5.1 Structure of the Compiler
+- ~compile~ performs a case anaylsis on the syntactic type of the expression to be compiled and for each type of expression it dispatches to a specialized /code generator/
+  - ~compile~ and the code generators take three arguments: ~exp~, ~target~, and ~linkage~
+    - ~exp~ - the expression to compile
+    - ~target~ - specifies the register in which the compiled code is to return the value of the expression
+    - ~linkage~ descriptor - describes how the code resulting fro mthe compilation of the expression should proceed when it has finished execution.
+      - in this example the ~linkage~ descriptor can specify the code continue at the next instructions (~next~), return from the procedure being compiled (~return~) or jump to a named entry point (~<label>~)
+- Each code generator returns an /instruction sequence/ containing the object code it has generated for the expression.
+**** Exercises
+***** 5.31
+- ~(f 'x 'y)~ - This one does need the ~env~ to be saved as we only need to look up ~f~ in the current environment
+- ~((f) 'x 'y)~ - Here we need to save ~env~ so we can use it after we evaluate ~(f)~, when applying the result of ~(f)~ to ~'x~ and ~'y~
+- ~(f (g 'x) y)~ - Here we need to save ~env~, ~proc~ and ~argl~ because we need to evaluate the second argument in a new environment before applying the current ~proc~, ~f~, to it, and we will also need to lookup the variable value of ~y~ before applying ~f~.
+- ~(f (g 'x) 'y)~ Here we need to save the ~argl~ and ~proc~ because of the evaluation of the second argument, but we do not need to save the ~env~ because ~'y~ is quoted and thus does not need to be looked up in the ~env~ and it will not be impacted by an environment change
+***** 5.32
+Skipped
+*** 5.5.2 Compiling Expressions
+- In general, the output of each code generator will end with instructions that implement the required linkage.
+- When compiling ~lambda~ expressions we need to compile the procedure object and the procedure body. The procedure object is constructed at runtime, it combines the current environment with the entry point to the compiled procedure body (a newly generated label);
+*** 5.5.3 Compiling Combinations
+- The essence of the compilation process is the compilation of procedure applications.
+*** 5.5.4 Combining Instruction Sequences
+*** 5.5.5 An Example of Compiled Code
+**** Exercises
+***** 5.33
+Skipped
+***** 5.34
+Skipped
+***** 5.35
+Skipped
+***** 5.36
+Skipped
+***** 5.37
+Skipped
+***** 5.38
+Skipped
+*** 5.5.6 Lexical Addressing
+- One of the most common optimizations performed by compilers is the optimization of variable lookup.
+  - Our current example compiler looks up variables by checking the environments and working out frame by frame until it find the variable. This can be expensive
+  - An improved we can make is to lookup variables using lexical addressing.
+    - Since our language is lexically scoped -- the inner blocks have access to the variables and declarations of the outer blocks -- the run time environment for any expression will have a structure that parallels the lexical structure of the program in which the expression appears. The run time environment will have inner frames contained within outer frames.
+      - We can use a /lexical address/ that consists of two number: a /frame number/ which specifies how many frames to pass over, and a /displacement number/ which specifies how many variables to pass over in that frame, to more effieciently lookup variables without needing to scan through each frame.
+      - The compiler can maintain a data structure called a /compile-time environment/ to keep track of which variables will be at which positions in which frames in the run-time environment in order to produce code that uses lexical addressing.
+**** Exercises
+***** 5.39
+Skipped
+***** 5.40
+Skipped
+***** 5.41
+Skipped
+***** 5.42
+Skipped
+***** 5.43
+Skipped
+***** 5.44
+Skipped
+*** 5.5.7 Interfacing Compiled Code to the Evaluator
+- An interpreter raises the machine to the level of the user program.
+  - Interpreters are good for interactive program development and debugging because the steps of program execution are organized in terms of these abstractions
+- A compiler lowers the user program to the level of the level of the machine language.
+  - Compiled code can execute faster because the steps of program execution are organized in terms of the machine language, and the compiler is free to make optimizations that cut across the higher-level abstractions
+**** Exercises
+***** 5.45
+Skipped
+***** 5.46
+Skipped
+***** 5.47
+Skipped
+***** 5.48
+Skipped
+***** 5.49
+Skipped
+***** 5.50
+Skipped
+***** 5.51
+Skipped
+***** 5.52
+Skipped
