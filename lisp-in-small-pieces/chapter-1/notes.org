@@ -1,0 +1,333 @@
+#+title: Lisp In Small Pieces - Chapter 1 Notes
+#+author: Erik
+
+* Chapter 1 - The Basics of Interpretation
+** 1.1 Evaluation
+- The most essential part of a Lisp interpreter is concentrated in a single function around which more useful functions are organized, ~eval~.
+  - ~eval~ takes a program as its argument and returns the value as output.
+- A language is described as /universal/ if it is as powerful as a Turing machine
+- Church's thesis says that nay function that can be computed can be written in any universal language.
+  - A Lisp system is a function taking programs as input and returning their value as output, thus a Lisp system can be written in a universal language.
+    - The ~eval~ function of a Lisp system can be written in Lisp since it is a function that computes return values as output based on program input.
+      - Since ~eval~ is available in Lisp the programming environment is part of the language too. The programming environment includes things like a debugger, tracer, and other tools; and since it is part of the language writing those tools -- that control program evaluation -- is just a matter of elaborating on the code for ~eval~.
+- **Note** for the interpreters we'll call the function ~eval~ that we are defining ~evaluate~, and the function ~apply~ we'll call ~invoke~ to avoid confusion  with the Scheme ~eval~ and ~apply~ functions and allow for easier experimentation
+** 1.2 Basic Evaluator
+- Variables within a program are distinguished between /free variables/ and /bound variables/
+  - /free variables/ are variables that have no binding form -- **lambda**, **let**, etc -- qualifying it.
+    - A free variable is unbound by any constraint, its value could be anything.
+  - Otherwise the variable is considered a /bound variable/
+- The data structure for associating variables and values is known as an /environment/
+- ~evaluate~ takes a program accompanied by an environment and returns a value
+** 1.3 Evaluating Atoms
+- An important characteristic of Lisp is that programs are represented by expressions of the language
+- An expression is /atomic/ when it does not involve a dotted pair and when it is not a symbol.
+- ~evaluate~ begins by syntactically analyzing the expression to evaluate to deduce what it represents
+- In practice, a variable is nothing other than an imaginary object to which the language and the programmer attach a certain sense, but which is handled only by means of its representation.
+  - In other words, a variable is just a thing in the representation of a program that we attach some sort of "value" to, but to be used it has to have some "tangible" sense for the interpreter. We have to encode the variable in a representation in order to enable ~lookup~ to find its value in the environment. This could be as simple as transforming the representation symbol into some key to be used by ~lookup~.
+- atomic expressions have idempotence known as the /autoquote/ facility in which the object does not need to be quoted and it is its own value.
+  - For example constants such as numbers. ~42~ does not need to be quoted and it has its own value of ~42~
+  - We should /autoquote/ only data that deserve it: numbers, characters, strings of characters.
+#+begin_src scheme
+(define (evaluate e env)
+  (if (atom? e)
+      (cond ((symbol? e) (lookup e env))
+            ((or (number? e) (string? e) (char? e) (boolean? e) (vector? e))
+             e)
+            (else (wrong "Cannot evaluate" e)))
+      ...))
+#+end_src
+** 1.4 Evaluating Forms
+- A /special form/ is a sytantic form that cannot be redefined adequately and must not be tampered with.
+  - In Lisp they are represented by a list where the first term is a particular symbol belonging to the set of /special operators/
+- When a special form does not begin with a keyword, we say it is a /functional application/ or simply an application
+*** 1.4.1 Quoting
+- ~quote~ is a special form that allows us to introduce a value that, without quotation, would be confused with a legal expression.
+*** 1.4.2 Alternatives
+- The ~if~ special form is a control structure that evaluates its first argument, the /condition/, which if true causes if to return the value of the second argument, the /consequence/ or if false the value of the third, the /alternate/
+  - **Note** in our evaluator there is no explicit representation of true and false in the implemented language, they are expected to be the same between the implemented language and the implementing language.
+*** 1.4.3 Sequence
+- A /sequence/ makes it possible to use a single syntactic form for a group of forms  to evaluate sequentially.
+  - **Note** Scheme uses ~begin~ for this, other Lisps use ~progn~
+- Sequences are of no particular interest if a language is purely functional (it has no side effects)
+- Sequencing is the explicit form for putting a series of evaluations in order. Other forms can introduce this order
+  - ~(if A B B) === (begin A B)~ which can also be simulated by ~(begin A B) === ((lambda (void) B) A)~
+    - The latter shows the ~begin~ is not a necessary special form in Scheme since it can be simulated by the functional application that forces arguments to be computed before the body of the invoked function (the /call by value/ evaluation rule), because in the above example we have to compute ~A~ before we can invoke the ~lambda~.
+*** 1.4.4 Assignment
+- The value of a variable can be modified, this is assignment of the variable and it involves modifying the value of the variable in the environment.
+  - Assignment happens in two steps: first the new value is calculated, then it becomes the value of the variable.
+*** 1.4.5 Abstraction
+- Functions, aka /procedures/ in Scheme terminology, are the result of evaluating the special form ~lambda~, a name which indicates an /abstraction/.
+*** 1.4.6 Functional Application
+- When a list has no special operator as its first term, it's known as a /functional application/, or in lambda-calculus a /combination/.
+  - The function we get by evaluating the first term is applied to the list of arguments we get by evaluating the following terms
+- The order of evaluation of arguments in the Lisp we are defining is similar to the order of evaluation of arguments to ~cons~ in ~evlis~ (in the ~code.scm~). We could change the order to anything we want by using an explicit sequence, as below (left to right evaluation):
+  #+begin_src scheme
+  (define (evlis exps env)
+  (if (pair? exps)
+      (let ((argument1 (evaluate (car exps) env)))
+        (cons argument1 (evlis (cdr exps) env)))
+      '()))
+  #+end_src
+
+- **Note** ~let~ is a macro that expands into a functional application: ~(let ((x A)) B) === ((lambda (x) B) A)~
+** 1.5 Representing the Environment
+- The environment associates variables with values, conventionally represented using an /association list/ data structure, aka ~A-list~.
+  - This is what we'll use to represent the environment, and we will represent variables by symbols of the same name (even though as described above a variable has to be encoded in order to be looked up in the environment, here we just use a simple encoding of a symbol of the same name).
+- The environment can be seen as a composite abstract type and we can extract or modify subparts of the environment with selection and modification functions.
+- A /list of variables/ is represented by a list of symbols, possibly a dotted list, that is terminated not by ~()~ but by a symbol which we call a /dotted variable/.
+** 1.6 Representing Functions
+- The easiest way to represent functions in the language is to use functions of the defining language, aka the implementation language.
+- We often refer to the value of an abstraction (value of a /function/) as its /closure/ because the value closes its definition environment
+*** 1.6.1 Dynamic and Lexical Binding
+- Any evaluation is always carried out within a certain environment and the management of the environment is a major point that evaluators must resolve efficiently.
+- In a /lexical/ Lisp a function evaluates its body in its own definition environment extended by its variables
+- In a /dynamic/ Lisp a function extends the current environment, the environment of the application
+  - Dynamic binding corresponds to establishing a valid binding when beginning a computation and that binding is undone automatcially in a guaranteed way as soon as that computation is complete.
+  - Dynamic binding makes it possible to insure that a dynamic variable is present and correctly assigned during a computation and only during that computation regardless of the outcome.
+- Variables are programming entities that have their own /scope/.
+  - The scope of a variable is essentially a geographic idea corresponding to the region in the programming text where the variable is visible and thus accessible.
+- Lexical binding is named such because we can start simply from the text of the function and, for any variable, find the form that bound the variable ro konw with certainty that it is a global variable.
+- Scope may be obscured locally by /shadowing/, which occurs when one variable hides another because they both have the same name.
+- /Referential transparency/ is the property that a language has when substituting an expression in a program for an equivalent expression does not change the behavior of the program; they both calculate the same thing.
+  - Referenctial transparency is lost once a language has side effects.
+- In summary, lexical binding is binding by extending the environment during the definition of a function; dynamic binding is extending the environment during the application of a function.
+*** 1.6.2 Deep or Shallow Implementation
+- When the environment is represented as an association-list the cost of searching for the value of a variable is linear with respect to the length of the list; this is known as /deep binding/
+- /Shallow binding/ on the other hand is when each variable is associated with a place where its value is always stored independently of the current environment.
+  - The cost of lookup is constant in this case since its value is often based on an indirection.
+#+begin_src scheme
+;;  shallow variable binding simulation functions
+(define (s.make-function variables body env)
+  (lambda (values current.env)
+    (let ((old-bindings
+           (map (lambda (var val)
+                  (let ((old-value (getprop var 'apval)))
+                    (putprop var 'apval val)
+                    (cons var old-value)))
+                variables
+                values)))
+      (let ((result (eprogn body current.env)))
+        (for-each (lambda (b) (putprop (car b) 'apval (cdr b)))
+                  old-bindings)
+        result))))
+(define (s.lookup id env)
+  (getprop id 'apval))
+(define (s.update! id env value)
+  (putprop id 'apval value))
+#+end_src
+** 1.7 Global Environment
+- A /mutable/ binding may be the object of assignment. An /immutable/ binding may _not_ be the object of assignment.
+- An /inline/ function is a designation given to a function where the body of the function, appropriately instantiated, can replace the function call (meaning the body of the function can be executed in line with the code rather than needing to jump to a function label and perform and stack and register management required to call a function, inlining can remove this overhead)
+** 1.8 Starting the Interpreter
+** 1.9 Conclusions
+- At this point we have a language /L/ defined by a function ~evaluate~ written in the language /L/
+** 1.10 Exercises
+*** 1.1
+#+begin_src scheme
+(define (tracing.evaluate e env)
+  (if (atom? e)
+      (cond ((symbol? e) (lookup e env))
+            ((or (number? e) (string? e) (char? e) (boolean? e) (vector? e))
+             e)
+            (else (wrong "Cannot evaluate" e)))
+      (case (car e)
+        ((quote) (cadr e))
+        ((if) (if (evaluate (cadr e) env)
+                  (evaluate (caddr e) env)
+                  (evaluate (cadddr e) env)))
+        ((begin) (eprogn (cdr e) env))
+        ((set!) (update! (cadr e) env (evaluate (caddr e) env)))
+        ((lambda) (make-function (cadr e) (cddr e) env))
+        (else
+         (let ((func (car e))
+               (args (cdr e)))
+           (let ((result (invoke (evaluate func env)
+                                 (evlis args env))))
+             (display `(function: ,(car e) arguments: ,(cdr e))) (newline)
+             (display `(returning result: ,result)) (newline)
+             result))))))
+#+end_src
+*** 1.2
+#+begin_src scheme
+(define (evlis exps env)
+  (define (evlis exps)
+    (if (pair? exps)
+        (cons (evaluate (car exps) env)
+              (evlis exps))
+        (list (evaluate (car exps) env))))
+  (if (pair? exps)
+      (evlis exps)
+      '()))
+#+end_src
+*** 1.3
+My solution:
+#+begin_src scheme
+(define wrong error)
+
+(define (extend env names values)
+  (cons (cons names values) env))
+
+(define (lookup id env)
+  (define (iter-lookup names vals)
+    (if (null? names)
+        '()
+        (if (eq? id (car names))
+            (car vals)
+            (iter-lookup (cdr names) (cdr vals)))))
+  (define (iter-env current-env)
+    (if (not (null? current-env))
+        (let ((names (caar current-env))
+              (vals (cdar current-env)))
+          (let ((result (iter-lookup names vals)))
+            (if (not (null? result))
+                result
+                (iter-env (cdr env)))))
+        (wrong "No such binding" id)))
+  (iter-env env))
+
+(define (update! id env value)
+  (define (iter-lookup names vals)
+    (if (null? names)
+        '()
+        (if (eq? id (car names))
+            (begin (set-car! vals value)
+                   value)
+            (iter-lookup (cdr names) (cdr vals)))))
+  (define (iter-env env)
+    (if (not (null? env))
+        (let ((result (iter-lookup (caar env) (cdar env))))
+          (if (not (null? result))
+              result
+              (iter-env (cdr env))))))
+  (iter-env env))
+
+(define env.init '())
+(define env.global (extend env.init (list 'one 'two 'three) (list 1 2 3)))
+(define env.frame1 (extend env.global (list 'four 'five 'six) (list 4 5 6)))
+
+(display `(global env is ,env.global)) (newline)
+(display `(frame1 env is ,env.frame1)) (newline)
+(display `(looking up ,'one: ,(lookup 'one env.frame1))) (newline)
+(display `(looking up ,'three: ,(lookup 'three env.frame1))) (newline)
+(display `(updating ,'three to 4: ,(update! 'three env.frame1 4))) (newline)
+(display `(looking up ,'three again: ,(lookup 'three env.frame1))) (newline)
+
+#+end_src
+Solution given in the text (for ~lookup~ we can figure out ~update~ from ~lookup~):
+#+begin_src scheme
+(define (lookup id env)
+  (if (pair? env)
+      (let look ((names (caar env)) ;; this is binding a procedure 'look' with args 'names' and 'values'
+                 (values (cdra env)))
+        (cond ((symbol? names)
+               (if (eq? names id) values
+                   (lookup id (cdr env))))
+              ((null? names) (lookup id (cdr env)))
+              ((eq? (car names) id)
+               (if (pair? values)
+                   (car values)
+                   (wrong "Too less values")))
+              (else (if (pair? values)
+                        (look (cdr names) (cdr values))
+                        (wrong "Too less values")))))
+      (wrong "No such binding" id)))
+#+end_src
+*** 1.4
+In this exercise we are assuming the variable propert ~'apval~ is a stack instead of a value. Representing shallow variable bindings using a stack is straightforward as we just need to push the new value onto the variables stack prior to evaluating the ~body~ of the function.
+#+begin_src scheme
+(define (make-function variables body env)
+  (lambda (values current.env)
+    (for-each (lambda (var val) (putprop var 'apval (cons val (getprop var 'apval))))
+              variables
+              values)
+    (let ((result (eprogn body current.env)))
+      (for-each (lambda (b) (putprop var 'apval (cdr (getprop var 'apval))))
+                variables)
+      result)))
+
+(define (s.lookup id env)
+  (car (getprop id 'apval)))
+(define (s.update! id env value) ;; Here we are changing the current value of the variable, thus we need to modify the value at the top of the stack.
+  (set-car! (getprop id 'apval) value))
+#+end_src
+*** 1.5
+The texts suggests to use a macro to redefine ~<~ since there are many predicates that will need this treatment
+#+begin_src scheme
+;; The text suggests to use a macro
+(define-syntax defpredicate
+  (syntax-rules ()
+    ((defpredicate pred value arity)
+     (defprimitive pred
+       (lambda (values)
+         (if (apply value values) t the-false-value)) ;; in the text the answer uses '(or (apply value values) the-false-value)'
+       arity))))
+
+(defpredicate < < 2)
+#+end_src
+*** 1.6
+This exercise is asking us to define ~list~ in our evaluator, not to write an equivalent function. As the text notes in the given answer we cannot know the arity of list since the argument can be variable so it suggests defining it with the ~definitial~ macro. The answer given in the text is below, though I do not fully understand how the ~lambda~ works to accept variable arity arguments in ~values~.
+
+#+begin_src scheme
+(definitial list (lambda (values) values))
+#+end_src
+*** 1.7
+From guile [[https://www.gnu.org/software/guile/manual/html_node/Continuations.html][docs]]
+A /continuation/ is code that will execute when a given function or expression returns. In Scheme continuations are represented by special procedures; the property that makes them "special" is that when a continuation is called it abandons the current program locations and jumps directly to the location represented by the continuation. A continuation is like a dynamic label that captures at run-time a point in program execution that captures all the nested calls that have led to it (or rather the code that will execute when those calls return)
+
+Personal notes on continuations:
+Continuations can be useful for backtracking, like in the ~amb-evaluator~ from SICP. So, continuations are useful for capturing code that needs to be executed when a funtion returns, or they can be passed to a function to be used in error cases or as handlers. Like in the ~amb-evaluator~ we would pass a continuation to each function so that it knew where to "backtrack" to; if it reached an unsuccessful point of execution it would "backtrack" by calling the continuation which held the code that needed to be executed for the other branch of the choice-point.
+
+To define ~call/cc~ in our language, the text suggests levaraging ~call/cc~ in the implementing language, Scheme. The answer here is from the answers in the text:
+#+begin_src scheme
+(defprimitive call/cc
+  (lambda (f) ;; return a lambda that takes a procedure 'f'
+    (call/cc (lambda (g) ;; the procedure calls 'call/cc' in the underlying implementing language which in Scheme takes a procedure as an argument
+               (invoke ;; call the procedure in 'f' with the arguments that result from calling 'g' with the argument in values, if the arity matches
+                f (list (lambda (values)
+                          (if (= (length values) 1)
+                              (g (car values))
+                              (wrong "Incorrect arity" g))))))))
+  1) ;; the arity of the primitive function being defined
+#+end_src
+*** 1.8
+~apply~ is a procedure that should take a procedure and list of arguments as its parameters and apply the procedure to the arguments, Apply also needs to evaluate the arguments to be able to apply the procedure to a list of _values_.
+
+Again this answer is from the text
+#+begin_src scheme
+(defprimitive apply
+  (lambda (values)
+    (if (>= (length values) 2)
+        (let ((f (car values))
+              (args (let flat ((args (cdr values)))
+                      (if (null? (cdr args))
+                          (car args)
+                          (cons (car args) (flat (cdr args)))))))
+          (invoke f args))
+        (wrong "Wrong arity" values))))
+#+end_src
+*** 1.9
+To define a function ~end~ that allows us to exit the interpreter we can just define a new primitive function and associate that with a ~lambda~ procedure that calls the process exit procedure (~primitive-exit~ in guile Scheme):
+#+begin_src scheme
+(defprimitive end
+  (lambda () (primitive-exit 0))
+  0)
+#+end_src
+*** 1.10
+Skipped
+*** 1.11
+I did not understand this question in the text and could not understand where ~begin~ was defined by means of ~lambda~, aside from the rule on page 11 that shows ~(begin A B) === ((lambda (void) B) A)~ which I think is what's referenced in the text's answer to this exercise stating how ~begin~ sequences can be transformed into binary sequences as in the previous example. The binary sequence is ~((lambda (void) B) A)~ for a two-expression sequence and that can be expanded to an n-expression sequence with nested binary sequences. The test provides the following for example:
+#+begin_src scheme
+(begin exp1 exp2) ===
+((lambda (void other) (other))
+ exp1
+ (lambda () exp2))
+#+end_src
+And I expand on that with the form of a three-expressionn sequence:
+#+begin_src scheme
+(begin exp1 exp2 exp3) ===
+((lambda (void other) (other))
+ exp1
+ ((lambda (void other) (other))
+  exp2
+  (lambda () exp3)))
+#+end_src
