@@ -1,3 +1,4 @@
+;; The code here represents a Lisp1, aka Scheme, interpreter
 (define wrong error) ;; alias 'wrong' to 'error'
 
 (define (atom? exp) (not (pair? exp)))
@@ -73,7 +74,6 @@
       (wrong "Not a function" fn)))
 
 (define (make-function variables body env)
-  (display `(in make function body: ,body variables: ,variables))
   (lambda (values)
     (eprogn body (extend env variables values))))
 
@@ -137,6 +137,8 @@
 (defprimitive cdr cdr 1)
 (defprimitive set-cdr! set-cdr! 2)
 (defprimitive + + 2)
+(defprimitive - - 2)
+(defprimitive * * 2)
 (defprimitive eq? eq? 2)
 (defprimitive < < 2)
 
