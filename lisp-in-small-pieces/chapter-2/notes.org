@@ -1,0 +1,397 @@
+* Chapter 2 - Lisp, 1, 2 ... omega
+- A function represents a special case in an evaluator. The basic type has a special creator, ~lambda~ and at least one legal operation: application.
+  - The fact a function has few qualities make it particularly attractive for specification or encapsulations because it is opaque and  thus allows only  waht it is programmed for.
+- A /first class/ object can be an argument or the value of a function; it can be stored in a variable, a list, an array, etc.
+** 2.1 Lisp1
+- In the previous chapter the main activity was illustrating the functional philosophy of Scheme -- a philosophy it shares with many functional languages of functions be first class object -- done mostly with the ~make-function~ procedure that created functional objects. The process of evaluating terms in an application did not distinguish the function from its arguments; the expression in the /function position/ was not treated differently from the expressions in the /parametric/ positions.
+- The keys points of Lisp1 are:
+  - ~lambda~ is a special form for creating first class objects; closures capture their definition environment.
+  - All the terms in an application are evaluated by the same evaluator.
+** 2.2 Lisp2
+- Programs in Lisp are generally such that most functional applications have the name of a global function in their functional position.
+  - With this as the case, we can alter the ~evaluate~ function to remove the need to evaluate the functional position and instead just look it up. This leaves us with two evaluators, one mini-evaluator for functions and one evaluator for the rest of the program.
+    -  The task of the function evaluator -- ~evaluate-application~ --  is to analyze the function term in order to prepare the final invocation.
+    - Some gains from this approach:
+      - We can eliminate the call to ~f.evaluate~ for a function application because we can replace it with ~lookup~ now.
+      - With a separate function environment that is free from any variable bindings the environment is more compact and searches can proceed more quickly there.
+      - Since every name is bound to a function in ~fenv~ we can simplify the call to ~invoke~ to remove the ~(procedure? fn)~ test
+    - In Lisp, the number of function calls is such that any sort of improvement in function calls is always for the good and can greatly influence overall performance.
+      - The gain here, however, is not great because it affects only /calculated/ functional applications, those that are not know statically, of which there are few.
+    - The downside is that we have lost the ability to calculate the function to apply (since it must be a named binding in ~fenv~, or a ~lambda~)
+*** 2.2.1 Evaluating a Function Term
+- The potential solutions, enabling the evaluation of the term in the functional position to apply, offered in this section led to issues with ~evaluate-application~ looping either in trying to constantly evaluate a non-function form like an number, or in trying to lookup a function in the variable environment since it was not predefined in the function environment, ~fenv.global~.
+- No solution to functional position term evaluation is given in this section.
+*** 2.2.2 Duality of the Two Worlds
+- To summarize these problems: there are calculations belonging to the parametric world that we want to carry out in the function world, and vice versa.
+  - To jump between these two worlds the text introduces ~funcall~ and ~function~ to denote when to evaluate somethign before treating it like a function and when to treat it as a functional value, respecitively.
+    - ~funcall~ lets us take the result of a calculation coming from the parametric world and put it into the function world as a value.
+    - ~function~ lets us get the value of a variable from the function world.
+- There is no assignment form available to to modify the function environment. This property makes it possible for compiliers to /inline/ function calls in a way that is semantically clean.
+*** 2.2.3 Using Lisp2
+*** 2.2.4 Enriching the Function Environment
+- Environments of any kind are instances of an abstract type. We expect that an environment will contain bindings, that we can look there for the binding associated with a name, and teh we can also extend it.
+  - functional applications or ~let~ forms can extend the environment of variables.
+- We would gain a lot by allowing for the extension of the function environment, which we do here with the new special form ~flet~:
+  #+begin_src scheme
+  (flet ((name1 list-of-variables1 body1)
+         (name2 list-of-variables2 body2)
+         ...
+         (nameN list-of-variablesN bodyN))
+        expressions...)
+  #+end_src
+** 2.3 Other Extensions
+** 2.4 Comparing Lisp1 and Lisp2
+- Lisp1 (from chapter 1) has a simple and consistent evaluation process; a single environment where everything is evaluated by ~evaluate~. Whereas Lisp2 is more difficult due to the two worlds, function and variable, which forces us to exploit forms that cross over from one world to the other.
+  - A program written in Lisp2 clearly separates the world of functions from the rest of its computations.
+** 2.5 Name Spaces
+- An /environment/ associates entites with names
+  - An environment contains /bindings/ between names and teh /entities/ referenced by these names
+*** 2.5.1 Dynamic Variables
+- In this implementation dynamic variables can be bound locally by ~dynamic-let~ (syntax comparable to ~let~ and ~flet~), their value can be retrieved with ~dynamic~ and they can be modified with ~dynamic-set!~.
+- The environment for dynamic variables cannot be captured, and every reference to a dynamic variable involves a search for its value in the current dynamic environment.
+  - We can see this in ~df.make-function~ where we pass in the normal environment ~env~ and the function environment ~fenv~, but the returned ~lambda~ application takes the dynamic environment ~denv~ as a argument at application time
+  - One advantage to the dynamic environment is that it shows clearly what is dynamic and what isn't
+- One of the most important ways a dynamic environment can be used is around error handling.
+  - When an error or some other exceptional situation occurs during a computation, an object defining the exception is formed and to that object we apply the current function for handling exceptions.
+*** 2.5.2 Dynamic Variables in Common Lisp
+- To summarize this section: This section illustrates how to implement the behavior of dynamic variables in Common Lisp where a variable is declared dynamic with the form ~special~ but by doing so that prevents the use of the lexical value of the variable. In Common Lisp a variable's nature (dynamic vs lexical) is lexically encoded, i.e. when a variable is declared dynamic it is also encoded in the lexical environment so we can see that it is a dynamic var and search in the dynamic environment. The changes in this section do this by extending the ~env~ with dynamic variable names (just the symbols, no values) when a dynamic variable is defined and the lookup functions are modified to look for non-pair variables in ~env~ and if they are found in ~env~ it informs lookup to check the dynamic environment.
+*** 2.5.3 Dynamic Variables without a Special Form
+- Instead of using special forms to deal with dynamic variables this section introduces an interpreter that uses two functions:
+  - The first function associates two values
+    - ~bind-with-dynamic-extent~ (~bind/de~)
+      - takes as arguments:
+        - a key, ~tag~
+        - a ~value~ to be associated with the key
+        - a ~thunk~, which is a calculation represented by a 0-ary function (function without variables)
+      - The function invokes the ~thunk~ after it has enriched the dynamic environment
+  - The second function finds the second of thse two values when we hand it the first one
+    - ~assoc/de~
+      - takes as arguments:
+        - a key
+        - a function that it will invoke on the key if the key is not present in the dynamic environment
+*** 2.5.4 Conclusions about Name Spaces
+- When several different spaces can be referred to by an ambiguous syntax, the rules have to be spelled out in order to eliminate the ambiguity.
+** 2.6 Recursion
+*** 2.6.1 Simple Recursion
+- Simple recursion demands a global environment because we need to be sure that a binding is bound in the environment before evaluating the closure that becomes the value of the binding.
+  - This is illustrated in the following example of ~fact~ since we need to be sure ~fact~ is bound in the environment before the closure (function body) is evaluated, otherwise the recursive call to ~fact~ in the closure will fail to see the binding.
+    #+begin_src scheme
+    (define (fact n)
+      (if (= n 0)
+          1
+          (* n (fact (- n 1)))))
+    #+end_src
+*** 2.6.2 Mutual Recursion
+#+begin_src scheme
+(define (even? n)
+  (if (= n 0) #t (odd? (- n 1))))
+(define (odd? n)
+  (if (= n 0) #f (even? (- n 1))))
+#+end_src
+- Regardless of the order, the first defninition cannot be aware of the second.
+  - This points to a global environment being ideal since the global environment will be closed upon by both defnitions which will capture all variables, including the definitions
+*** 2.6.3 Local Recursion in Lisp2
+- The initial problem with local recursion in Lisp2's ~flet~ is that ~flet~ captures the function env and current env in the locality where ~flet~ is evaluated, meaning the recursive call to ~fact~ in the function body below does not refer to the locally bound function ~fact~ but rather to the function ~fact~ that is outside the ~flet~ form:
+  #+begin_src scheme
+  (flet ((fact (n) (if (= n 0) 1
+                       (* n (fact (- n 1))))))
+        (fact 6))
+  #+end_src
+- The special form ~labels~ insures that the closures that are created will be in a function environment where all the local functions are aware of each other.
+- In Lisp2 there are two formas available to enrich the local function environment: ~flet~ and ~labels~
+*** 2.6.4 Local Recursion in Lisp1
+- In Lisp1 the form ~letrec~ (let recursive) has a similar effect as ~labels~ in Lisp2
+- The variables in the ~let~ form have their values computed in the current environment and only the body of the ~let~ is evaluated in the enriched environment (the env with the newly bound and initialized variables)
+  - This means we cannot write mutually recursive functions in a simple way (if all the variables are computed in the current environment then the mutually recursive bindings my not be present when an initial value is computed in ~let~)
+- The difference between ~letrec~ and ~let~ is the expressions initializing the variables are evaluated in the same environment where the body of the ~letrec~ form is evaluated.
+  - The operations of ~letrec~ are done in the following order:
+    - First the current environment is extended by the variables in ~letrec~
+    - Then in the extended environment the initializing expressions of those same variables are evaluated.
+    - Finally the body of the ~letrec~ form is evaluated in the enriched environment.
+- The syntax of ~letrec~ is not very strict. For that reason we need to define a rule to forbid the use of the value of a variable of letrec during the initialization of the same variable, to avoid odd behaviors e.g. infinite lists and multiple or no solution equations (example from the text)
+- **Note** Some Scheme or ML compilers analyze initialization expressions and sort them topologically to determine the order in which to evaluate them for situations like the following where valid evaluation is dependent on ordering:
+  #+begin_src scheme
+  (letrec ((x (+ y 1))
+           (y 2))
+    x)
+  #+end_src
+  - But sorting is not always feasible when there is mutual dependence
+*** 2.6.5 Creating Uninitialized Bindings
+- To avoid some pitfalls with using uninitialized variables -- the use of an arbitrary symbol like ~#<UFO>~ which does not provide much use, or the use of a particular symbol like ~#<uninitialized>~ that we then must check for and breaks our guarantees of each argument to a function having a value since any user could pass in ~#<uninitialized>~ as an arg value -- we can use a syntatic variation of ~let~ that treats variables that appear without an initialization form as unintialized. But this does require any attempt at evaluation of the variable to verify it is initialized.
+#+begin_src scheme
+;; the form letrec
+
+(letrec ((variable_1 expression_1)
+         ...
+         (variable_N expression_N))
+  body)
+
+;; is the same as
+
+(let (variable_1 ... variable_N)
+  (let ((temp_1 expression_1)
+        ...
+        (temp_N expression_N))
+    (set! variable_1 temp_1)
+    ...
+    (set! variable_N temp_N)
+    body))
+#+end_src
+- This solves the problem of uninitialized variable by using an internal flag to be the uninitialized value, but it turns ~let~ from a syntactical form (which was just a functional application that could be expressed with ~lambda~) to a primitive special form the interpreter must account for.
+  - The following is added to ~evaluate~ case statement
+    #+begin_src scheme
+    ((let)
+     (eprogn (cddr e) ;; the let body
+             (extend env
+                     (map (lambda (binding)
+                            (if (symbol? binding)
+                                binding
+                                (car binding)))
+                          (cadr e)) ;; the variable names
+                     (map (lambda (binding)
+                            (if (symbol? binding)
+                                the-uninitialzed-marker
+                                (evaluate (cadr binding) env)))
+                          (cadr e) ;; the variable values
+                          ))))
+
+    (define the-uninitialized-marker (cons 'non 'initialized))
+    #+end_src
+  - And ~lookup~ must be updated to check for the uninitialized flag
+    #+begin_src scheme
+    (define (lookup id env)
+      (if (pair? env)
+          (if (eq? (caar env) id)
+              (let ((value (cdar env)))
+                (if (eq? value the-unintialized-marker)
+                    (wrong "Uninitialized binding" id)
+                    value))
+              (lookup id (cdr env)))
+          (wrong "No such binding id")))
+    #+end_src
+- We now have a form of ~letrec~ that allows us to co-define mutually recursive functions
+*** 2.6.6 Recursion without Assignment
+- The form ~letrec~ we've been analyzing uses assignments to insure that initialization forms are evaluated, however languages known as /purely functional/ do not have this resource available to them; side affects are unknown among them.
+- Philosophically, forbidding assignment offers great advantages; it preserves referential integrity of the language which leave open the ability for various transformations of programs such as: moving code, using parallel evaluation, lazy evaluation, etc.
+- To achieve the functionality we've seen with ~letrec~ thus far but without using assignments -- the use of ~set!~ in the ~letrec -> let~ transformation above -- we could treat ~letrec~ as a special form, updating the case statement in ~evaluate~ thusly:
+#+begin_src scheme
+((letrec)
+ (let ((new-env (extend env
+                        (map car (cadr e))
+                        (map (lambda (binding) the-uninitialized-marker)
+                             (cadr e))))) ;; extend then environment with uninitialized values for new variables
+   (map (lambda (binding)
+          (update! (car binding)
+                   new-env
+                   (evaluate (cadr binding) new-env))) ;; update the uninitialized values of the new variables in the environment by evaluating their assignment expressions
+        (cadr e))
+   (eprogn (cddr e) new-env))) ;; evaluate the body expressions in the new environment
+#+end_src
+** 2.7 Conclusions
+- This chapter has shown the importance of binding.
+  - In Lisp1 a variable (a name) is associated with a unique binding and thus with a unique value, which is why we talk about the value of a variable rather than the value associated with the binding of that variable
+  - If we look at binding as an abstract type, we can say that a binding is created by a binding form, it is read or written by evaluation of the variable or by assignment, and it can be captured when a closure is created in which the body refers to the variable assicaited with that binding.
+  - A binding form introduces the idea of /scope/ The scope of a variable or of a binding is the textual space where that variable is visisble.
+    - e.g. the scope of a variable bound by ~lambda~ is restricted to the body of that ~lambda~ form, this is its textual or /lexical/ scope.
+- The two Lisps shown in this chapter represent different approaches to the environement. In Lisp1 everything is extended and defined in a single environment, whereas in Lisp2 the variable environment is treated separately from the function environment.
+** 2.8 Exercises
+*** 2.1
+~funcall fn &rest args~
+In Common Lisp, ~(funcall (function funcall) (function funcall) (function cons) 1 2)~ says to take the value of two function references to ~funcall~ and one to ~cons~ and call them with the args 1 and 2. The straightfoward result of this in Scheme is just ~(cons 1 2)~, however the given answer to this exercise present possibilities for defining ~funcall~ and ~function~ in Scheme, using macros
+#+begin_src scheme
+(define-syntax funcall
+  (syntax-rules ()
+    ((funcall fn args ...)
+     (fn args ...)))) ;; call fn with the args collected by the '...', the '...' matches a sequence of patterns to pattern variable in the 'pattern' portion of 'syntax-rules', and expands them in the 'template' portion of the 'syntax-rules' form
+
+(define-syntax function
+  (syntax-rules ()
+    ((function fn)
+     fn))) ;; return the fn form
+#+end_src
+The above macros will mimic the functionality of the forms from Common Lisp in Scheme
+*** 2.2
+In the pseudo-Common Lisp (Lisp2) from this chapter, the value of the form:
+#+begin_src scheme
+(defun test (p)
+  (function bar))
+(let ((f (test #f)))
+  (defun bar (x) (cdr x))
+  (funcall f '(1 . 2)))
+#+end_src
+should be an error since the function ~bar~ is not defined in the function environment ~fenv~ when ~test~ is evaluated, which evaluates the ~function~ form to lookup the value of ~bar~ in ~fenv~. Since ~bar~ is not definined until after ~test~ is called, it will not be present in ~fenv~ for the lookup and will result in an error.
+*** 2.3
+#+begin_src scheme
+(define (invoke fn args)
+  (cond ((procedure? fn) (fn args))
+        ((number? fn)
+         (if (pair? args)
+             (if (>= fn 0)
+                 (list-ref (car args) fn)
+                 (list-tail (car args) (* fn -1)))
+             (wrong "Incorrect arity" fn)))
+        ((pair? fn)
+         (map (lambda (f) (invoke f args)) fn))
+        (else
+         (wrong "Not a function" fn))))
+#+end_src
+*** 2.4
+#+begin_src scheme
+(definitial assoc/de
+  (lambda (values current.denv)
+    (if (= 3 (length values))
+        (let ((tag (car values))
+              (default (cadr values))
+              (comparator (caddr values))) ;; get the passed in comparator, which is a form belonging to the language being implemented
+          (let look ((denv current.denv))
+            (if (pair? denv)
+                (if (eq? the-false-value
+                         (invoke comparator (list tag (caar denv))
+                                 current.denv)) ;; here replace the eqv? check with the comparator, comparing against whatever the false value is in the language being implemented
+                    (look (cdr denv)) ;; false, keep looking
+                    (cdar denv)) ;; not false, return value
+                (invoke default (list tag) current.denv))))
+        (wrong "Incorrect arity" 'assoc/de))))
+
+;; sample use
+(assoc/de 'variable 1 'eq?)
+#+end_src
+*** 2.5
+#+begin_src scheme
+(define-syntax dynamic-let
+  (syntax-rules ()
+    ((dynamic-let ((var val) others ...) . body)
+     (bind/de 'var (list val) (lambda () (dynamic-let (others ...) . body)))) ;; recurse to bind all bindings
+    ((dynamic-let () . body) ;; no variables to be bound
+     (begin . body))))
+
+(define-syntax dynamic
+  (syntax-rules ()
+    ((dynamic var)
+     (car (assoc/de 'var specific-error))))) ;; car here because we are using a stack to maintain the dynamism of variables
+
+(define-syntax dynamic-set!
+  (syntax-rules ()
+    ((dynamic-set! var val)
+     (set-car! (assoc/de 'var specific-error) value))))
+#+end_src
+~specific-error~ above is a function specific to the underlying implementation that will return an error type recognizable by the system if it encounters any exceptions.
+*** 2.6
+#+begin_src scheme
+(define proplist '())
+(define (lookup l sym)
+  (display `(l is ,l)) (newline)
+  (if (null? l)
+      '()
+      (if (eq? (caar l) sym)
+          (cdar l)
+          (lookup (cdr l) sym))))
+
+(define (getprop symbol key)
+  (let ((symval (lookup proplist symbol)))
+    (if (not (null? symval))
+        (lookup symval key)
+        '())))
+
+(define (putprop symbol key value)
+  (define (iter l sym)
+    (if (null? l)
+        '()
+        (if (eq? (caar l) sym)
+            (set-cdr! (car l) value)
+            (iter (cdr l) sym))))
+  (let ((symval (lookup proplist symbol)))
+    (if (null? symval)
+        (set! proplist (cons (cons symbol (list (cons key value))) proplist))
+        (let ((keylist (cdr symval)))
+          (iter keylist key)))))
+
+(begin (putprop 'symbol 'key 'value)
+       (display `(got value from proplist ,(getprop 'symbol 'key))))
+#+end_src
+A solution inspired from the solution given in the text book:
+#+begin_src scheme
+(let ((properties '()))
+  (define putprop
+    (lambda (symbol key value)
+      (let ((plist (assq symbol properties)))
+        (if (pair? plist)
+            (let ((couple (assq key plist)))
+              (if (not (null? pair))
+                  (set-cdr! pair value)
+                  (set-cdr! plist (cons (cons key value)
+                                        (cdr plist)))))
+            (let ((plist (list symbol (cons key value))))
+              (set! properties (cons plist properties)))))
+      value))
+  (define getprop
+    (lambda (symbol key)
+      (let ((plist (assq symbol properties)))
+        (display `(plist is ,plist)) (newline)
+        (if (pair? plist)
+            (let ((couple (assq key (cdr plist))))
+              (if (pair? couple)
+                  (cdr couple)
+                  #f))
+            #f))))
+
+  (begin (putprop 'symbol 'key 'value)
+         (getprop 'symbol 'key)))
+#+end_src
+*** 2.7
+The special form ~label~ allows us to define a locally recursive function, that is a function that calls itself. In supporting label in Lisp1 we need to update the interpreter to handle ~label~ as a special form that binds in the environment a function name and associates it with the function body, before the function body is evaluated. To do this we can extend the environment with a ~'void~ binding before we update the binding with the created locally-recursive function.
+#+begin_src scheme
+  (define (evaluate e env)
+    ...
+    (case (car e)
+      ...
+      ((label)
+       (let* ((name (cadr e))
+              (new-env (extend env (list name) (list 'void))) ;; create new-env with void binding for the function
+              (def (caddr e)) ;; this is the lambda form
+              (func (make-function (cadr def) (cddr def) new-env)))
+         (update! name new-env func)
+         func))
+      ...
+      )
+#+end_src
+*** 2.8
+To add support for the special form ~labels~, which allow for the definition of mutually recursive functions (e.g. ~letrec~), to Lisp2 we need to update the ~f.evaluate~ procedure to extend the function environment with all the function names and ~'void~ bindings so that the functions are visible when we create and associate the actual body of the function with the name in the function environment using ~f.make-function~. Then we update the bindings in our new function environment before we evaluate the body of the form.
+#+begin_src scheme
+  (define (f.evaluate e env fenv)
+    ...
+    ((labels)
+     (let* ((exps (cadr e))
+            (func-names (map car exps))
+            (func-bodies (map cadr exps))
+            (new-fenv (extend func-names (map (lambda () 'void) func-names))))
+       (for-each
+        (lambda (name def)
+          update! name (f.make-function def env new-fenv))
+        func-names func-bodies)
+       (f.eprogn
+        (cddr e)
+        env
+        new-fenv)))
+    ...
+    )
+#+end_src
+*** 2.9
+According to the answer in the text, you could accomplish ~letrec~ using ~let~ and ~set!~ by having an outer ~let~ that binds function names to ~'void~ and in a nested ~let~ generate temporary variables to hold the outer binding values, and in the body of the nested ~let~ you could then ~set!~ variable names to their values and then evaluate the form.
+#+begin_src scheme
+(let ((var1 'void)
+      (varN 'void))
+  (let ((temp1 exp1)
+        (tempN expN))
+    (set! var1 temp1)
+    (set! varN tempN)
+    <expressions>))
+#+end_src
+*** 2.10
+Skipped
+*** 2.11
+Skipped
+*** 2.12
+Skipped
+*** 2.13
+Skipped
