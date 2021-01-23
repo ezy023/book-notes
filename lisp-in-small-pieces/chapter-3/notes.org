@@ -1,0 +1,310 @@
+* Chapter 3 - Escape & Return: Continuations
+- Every computation has the goal of returning a value to an entity called a /continuation/
+- Interpreters built in earlier chapters took an expression and environment in order to determine the value of an expression.
+  - Those interpreters, however, were not capable of defining computations that included /escapes/
+- /escapes/ are useful control structures used to break out of one context in order to get into another, more preferable one.
+  - Typically we use escapes:
+    - to master the behavior of programs in case of unexpected errors
+    - to program by exceptions when we define a general behavior where the occurrence of a particular event interrupts the current calculation and sends it back to an appropriate place
+- A calculation not only specifies the expression to computer and the environment of variables in which to compute it, but also where we must return the value obtained, which is known as a /continuation/
+  - A continuation represents a computation, and it does not take place unless we get a value for it. This protocol strongly resembels the one for a function.
+    - In ~(+ 3 (* 2 4))~, the continuation of the subexpression is the addition of ~3~ to the expected value of the subexpression, and we can equivalently represent the continuation of ~(* 2 4)~ as ~(lambda (x) (+ 3 x))~
+- Escapes, programming by exception, etc are merely particular forms for manipulating continuations.
+** 3.1 Forms for Handling Continuations
+- Capturing a continuation makes it possible to handle the control thread in a program
+*** 3.1.1 The pair ~catch/throw~
+- Syntax for the special form ~catch~ is: ~(catch label forms...)~
+  - ~label~ is evaluated and its value associated with the current continuation
+  - ~forms~ make up the body of ~catch~ and are evaluated sequentially like in a ~begin~.
+  - If nothing happens the value of the ~catch~ form is the value of the last of the ~forms~
+
+- The syntax for the form ~throw~ is: ~(throw label form)~
+  - The ~label~ form is evaluated and must lead to a value that ~catch~ has associated with a continuation
+- ~catch~ traps the value that ~throw~ sends it
+  - The form ~catch~ associates the current continuation with a label, the form ~throw~ actually makes the reference to this binding
+#+begin_src scheme
+(define (find-symbol id tree)
+  (define (find tree)
+    (if (pair? tree)
+        (or (find (car tree))
+            (find (cdr tree)))
+        (if (eq? tree id) (throw 'find #t) #f)))
+  (catch 'find (find tree)))
+#+end_src
+*** 3.1.2 The Pair ~block/return-from~
+- The escapes that ~catch~ and ~throw~ perform are dynamic. ~throw~ requests an escape and must verify during execution whether an associated ~catch~ exists and which continuation it refers to.
+- ~block~ and ~return-from~ superficially resemble ~catch~ and ~throw~, but are /lexical/ escapes aimed at reducing some of the dynamic costs associated with the latter.
+  - ~block~ syntax: ~(block label forms...)~
+    - ~label~ is not evaluated and must be an identifier
+    - ~block~ binds the current continuation to the name ~label~ in the /lexical escape environment/
+  - ~return-from~ syntax: ~(return-from label form)~
+    - ~label~ must reference the name of an escape that is lexically visible.
+    - ~return-from~ can appear only in the body of an associated ~block~, and when evaluated makes the associated ~block~ return the value of ~form~
+      #+begin_src scheme
+        (define (find-symbol id tree)
+          (block find
+                 (letrec ((find (lambda (tree)
+                                  (if (pair? tree)
+                                      (or (find (car tree))
+                                          (find (cdr tree)))
+                                      (if (eq? id tree)
+                                          (return-from find #t)
+                                          #f)))))
+                   (find tree))))
+      #+end_src
+*** 3.1.3 Escapes with a Dynamic Extent
+- Like all entities in Lisp, continuations have a certain extent
+- The extent of an escape caught by ~block~ is dynamic; the escape can be used only during the calculation of the body of the block
+*** 3.1.4 Comparing ~catch~ and ~block~
+- For both forms, the continuations they capture have dynamic extent; they last only as long as an evaluation.
+- ~block~ is better in most cases because it never has to verify during a ~return-from~ the corresponding ~block~ exists, since that existence is guaranteed by the syntax.
+*** 3.1.5 Escapes with Indefinite Extent
+- ~call/cc~ in Scheme is a result of the want for ~catch~ and ~block~ to have indefinite extent
+- **Note:** entities with indefinite extent continue to exist as long as the possibility of reference remains.
+  - Using ~call/cc~ with out example of ~find-symbol~:
+    #+begin_src scheme
+      (define (find-symbol id tree)
+        (call/cc
+         (lambda (exit)
+           (define (find tree)
+             (if (pair? tree)
+                 (or (find (car tree))
+                     (find (cdr tree)))
+                 (if (eq? tree id)
+                     (exit #t)
+                     #f)))
+           (find tree))))
+    #+end_src
+  - The call continuation of the function ~find-symbol~ is captured by ~call/cc~, reified as a unary function (a function of a single argument) bound to the variable ~exit~. When the symbol is found the escape is triggered by a call to the function ~exit~.
+    - /reify/ means to turn into an object. In the case above the continuation is "reified" by being turned to an object that is then bound to ~exit~ to be used.
+- To illustrate the indefinite extent of ~call/cc~:
+#+begin_src scheme
+(define (fact n)
+  (let ((r 1)
+        (k 'void))
+    (call/cc (lambda (c) (set! k c) 'void))
+    (set! r (* r n))
+    (set! n (- n 1))
+    (if (= n 1) r (k 'recurse))))
+#+end_src
+  - The continuation is stored as the value of the variable ~k~ which is enclosed in the continuation. The function recurses to compute the factorial by calling ~k~ until ~(= n 1)~.
+- Escaping is the same as getting away from any remaining computations in order to impose a final value on a form that is still being evaluated.
+*** 3.1.6 Protection
+- **Random Note**
+  - ~car~ is an acronym for "contents of the address register", and ~cdr~ is "contents of the decrement register"'
+- Syntax of the special form ~unwind-protect~: ~(unwind-protect form cleanup-forms)~
+  - ~form~ is evaluated first and becomes the value of the entire ~unwind-protect~ form.
+  - the ~cleanup-forms~ are evaluated for their effect before this value is finally returned.
+  - ~unwind-protect~ guarantees that the cleanup forms will always be evaluated regardless of the way that computation of ~form~ occurs, even if it is by escape.
+    - ~unwind-protect~ does not get along well with continuations that have indefinite extent.
+** 3.2 Actors in a Computation
+- From our current point of view a computation i smade up of three elements: an expression, an environment, and a continuation.
+  - The immediate goal is to evaluate the expression in the environment, the long term goal is to return a value to the continuation
+*** 3.2.1 A Brief Review of Objects
+- **Note** We are choosing ot use a small, independent macro implementation of an object system as a way to suggest how to implement continuations in the interpreter in this section
+  - Objects are grouped into /classes/; objects in the same class respond to the same /methods/; messages are sent by means of /generic functions/
+- A class is defined by ~define-class~:
+  #+begin_src scheme
+    (define-class class superclass
+      (fields ...))
+  #+end_src
+  - The function known as ~make-<class>~ creates objects belonging to ~<class>~
+  - defined classes have the following methods made available to them: creator, read-accessor, write-accessor, membership predicate
+  - root of the inheritance hierarchy is the class ~Object~ with no fields
+- A generic function is defined with:
+    #+begin_src scheme
+    (define-generic (function variables)
+      [default-treatment ...])
+    #+end_src
+    - ~default-treamtment~ defines what the generic function does when no other appropriate method can be found
+    - The ~variables~ is a normal list of variables aside from the /discriminator/ which is used to determine if there is an appropriate method defined in the class of the discriminator.
+- ~define-method~ is used to stuff a generic function with specific methods
+  #+begin_src scheme
+  (define-method (function variables)
+    treatment ...)
+  #+end_src
+  - Similar to ~define-generic~, this form uses the list of variables to specify the class for which the method is defined. For example the following defines a method for the class ~primitive~:
+    #+begin_src scheme
+    (define-method (invoke (ff primitive) vv* rr kk)
+      ((primitive-address ff) vv* rr kk))
+    #+end_src
+*** 3.2.2 The Interpreter for Continuations
+- In this interpreter the function ~evaluate~ has three arguments: teh expression, the environment, the continuation
+  - A note about variable naming, a variable with a ~*~ represents a list of whatever type of variable that variable name represents given the naming conventions in the text. For example, ~v*~ would represent a list of value type variables
+- The interpreter is built from three functions: ~evaluate~, ~invoke~, and ~resume~, the last two being generic functions that know how to invoke applicable object or handle continuations
+  - The entire interpreter is little more than a series of handoffs among these three functions
+*** 3.2.3. Quoting
+- The form for quoted consists of redering the quoted term to the current continuation
+*** 3.2.4 Alternatives
+- An alternative brings two continuations into play: the current continuation, and the continuation that consists of waiting for the value of the condition in order to determine which branch of the alternative to choose.
+*** 3.2.5 Sequence
+- When the form ~begin~ involves several terms, the first one must be evaluated by providing it a new continuation; that new continuation receives a value from ~resume~ which will trigger the method for ~begin-cont~. That continuation will discard the value returned, ~v~, and will restart the computation of the other forms present in ~begin~.
+*** 3.2.6 Variable Environment
+- The values of variables are recorded in an environment which will also be represented as an object.
+- It is necessary to introduce a particular continuation becuase the evaluation of an assignment is carried out in two phases:
+  - computing the value to assign
+  - and then modifying the variable involved.
+*** 3.2.7 Functions
+- Functions take the current evironment ~r~ even though they don't apparently use if for two reasonse
+  1. There is often a register dedicated to the environment in implementations
+  2. certain functions can influence the current lexical environment, such as debugging function for example.
+- Evaluation takes place left to right
+  - the function term is evaluated first with a continuation of the class ~evfun-cont~
+  - When the above continuation takes control it proceeds to the evaluation of the arguments, leaving a continuation which will apply the function to the evaluated arguments, an ~apply-cont~.
+    - Whilst evaluating arguments, continuations of type ~gather-cont~ are left and their role is to gather the arguments into a list
+** 3.3 Initializing the Interpreter
+- The ~address~ of a primitive defined in ~defprimitive~ points to something that is executable by the underlying machine
+** 3.4 Implementing Control Forms
+**Note** full implementations be found in ~code.scm~.
+*** 3.4.1 Implementation of ~call/cc~
+- In our interpreter in this chapter, ~call/cc~ takes the current continuation ~k~, transforms it into an object we can submit to ~invoke~, and then applies the first argument, a unary function, to it.
+#+begin_src scheme
+(definitial call/cc
+  (make-primitive
+   'call/cc
+   (lambda (v* r k)
+     (if (= 1 (length v*))
+         (invoke (car v*) (list k) r k)
+         (wrong "Incorrect arity" 'call/cc v*)))))
+#+end_src
+- The first argument in the "address" part of the primitive representing ~call/cc~, in this case the "address" is the ~(lambda (v* r k) ...)~, is applied to the continuation.
+*** 3.4.2 Implementation of ~catch~
+#+begin_src scheme
+(define-class catch-cont continuation (body r))
+(define-class labeled-cont continuation (tag))
+(define (evaluate-catch tag body r k)
+  (evaluate tag r (make-catch-cont k body r)))
+(define-method (resume (k catch-cont) v)
+  (evaluate-begin (catch-cont-body k)
+                  (catch-cont-r k)
+                  (make-labeled-cont  (catch-cont-k k) v)))
+#+end_src
+- ~catch~ evaluates its first argument, binds that argument to its continuation by creating a tagged block, and then goes on with its work of sequentially evaluating its body.
+*** 3.4.3 Implementation of ~block~
+- There are two problems to resolve in implementing lexical escapes:
+  - The first is to confer dynamic extent on continuations
+    - **Note:** dynamic extent is when references may occur at any time in the interval between establishment of the entity and teh explicit disestablishment of the entity. The entity is disestablished when execution of the establishing construct completes or is otherwise terminated.
+  - The second is to give lexical scope to the tags on lexical escapes
+- ~block-lookup~ searches for the continuation associated with the tag of the ~return-from~ in the lexical environment. If found, we verify whether the associated continuation is still valid by looking for it in the current continuation by means of the ~unwind~ function
+- ~unwind~ tries to transmit a value to a certain continuation which must still be alive (meaning it can be found in the current continuation)
+*** 3.4.4 Implementation of ~unwind-protect~
+- ~unwind-protect~ implies modifications to the preceding definitions of the forms ~catch~ and ~block~ because they must be adapted to the presence of ~unwind-protect~.
+  - We have to modify ~catch~ and ~block~ to take into account programmed cleanups when an ~unwind-protect~ form is breached by an escape.
+    - modified ~throwing-cont~ for ~unwind-protect~
+      #+begin_src scheme
+      (define-method (resume (k throwing-cont) v)
+        (unwind (throwing-cont-k k) v (throwing-cont-cont k)))
+      (define-class unwind-cont continuation (value target))
+      (define-method (unwind (k unwind-protect-cont) v target)
+        (evaluate-begin (unwind-protect-cont-cleanup k)
+                        (unwind-protect-cont-r k)
+                        (make-unwind-cont
+                         (unwind-protect-cont-k k) v target)))
+      (define-method (resume (k unwind-cont) v)
+        (unwind (unwind-cont-k k)
+                (unwind-cont-value k)
+                (unwind-cont-target k)))
+      #+end_src
+    - modified ~block~ for ~unwind-protect~
+      #+begin_src scheme
+      (define-method (block-lookup (r block-env) n k v)
+        (if (eq? n (block-env-name r))
+            (unwind k v (block-env-cont r))
+            (block-lookup (block-env-others r) n k v)))
+      #+end_src
+      - look for the continuation of the associated ~block~ in the lexical environment, and then unwind the continuation as far as this target block
+** 3.5 Comparing ~call/cc~ to ~catch~
+- In Lisp since continuations have dynamic extent, the idea of a stack is synonymous with the idea of continuation
+- In practice, ~call/cc~ allows you to code every known control structure: escape, coroutine, partial continuation, etc.
+** 3.6 Programming by Continuations
+*** 3.6.1 Multiple Values
+*** 3.6.2 Tail Recursion
+- A tail call occurs when a computation is resolved by another one without the necessity of going back to the computation that's been abandoned.
+  - A tail call makes it possible to abandon the current environment completely when that environment is no longer necessary. By doing so we gain considerable savings.
+    - For example, in the "classic" recursive factorial definition the recursive call to ~fact~ in (* n (fact (- n 1)))~ is not a tail call and is said to be /wrapped/ because the value of ~(fact (- n 1))~ is taken again in the current environment to be multiplied by ~n~. Thus we cannot abandon the current environment completely because we need to value of ~n~ in the current environment to complete the calculation,
+** 3.7 Partial Continuations
+- Calling a continuation corresonds to abandoning a computation that is underway and thus at most only one call can be carried out.
+  - For example:
+       #+begin_src scheme
+       (+ 1 (call/cc (lambda (k) (set! foo k) 2))) -> 3
+       (foo 3)                                     -> 4
+
+       (foo (foo 4))                               -> 5
+       #+end_src
+** 3.8 Conclusions
+- Continuations are closely bound to execution control because at any given moment, they dynamically represent the work that remains to do. For that reason, they are highly useful for handling exceptions.
+- "One of the roles of a compiler is to determine just which entities would be useful to build anyway"
+** 3.9 Exercises
+*** 3.1
+The value of ~(call/cc call/cc)~ is a unary procedure that passes the current continuation to ~call/cc~ which then applies to current continuation to the current continuation yielding the current continuation as a result. The order of evaluation does not change the answer as the calls to ~call/cc~ are passed the current continuation.
+*** 3.2
+The value of ~((call/cc call/cc) (call/cc call/cc))~ is also the current continuation. Using the logic from the answer to 3.1 that is given in the text, with the current continuation being represented by ~k0~, the calls simplify to ~((k0 k0) (k0 k0))~ which simpliefies to ~(k0 k0)~ which then simplifies to ~k0~, the current continuation.
+*** 3.3
+Skipped
+*** 3.4
+#+begin_src scheme
+(define-class function-with-arity function (arity))
+(define (evaluate-lambda n* e* r k)
+  (resume k (make-function-with-arity n* e* r (length n*))))e
+(define-method (invoke (f function-with-arity) v* r k)
+  (if (= (function-with-arity-arity f) (length v*))
+      (let ((env (extend-env (function-env f)
+                             (function-variables f)
+                             v*)))
+        (evaluate-begin (function-body f) env k))
+      (wrong "Incorrect arity" (functionn-variables f) v*)))
+#+end_src
+*** 3.5
+#+begin_src scheme
+(definitial
+  apply
+  (make-primitive
+   'apply (lambda (v* r k)
+            ;; first check that there is a procedure and arg to apply it to
+            (if (>= (length v*) 2)
+                (let ((f (car v*))) ;; get the procedure from the list of values
+                  (let args (let flat ((args (cdr v*)))
+                              (if (null? (cdr args))
+                                  (car args)
+                                  (cons (car args) (flat (cdr args))))))
+                  (invoke f args r k))
+                (wrong "Incorrect arity" 'apply)))))
+#+end_src
+*** 3.6
+#+begin_src scheme
+(define-class function-with-n-arity function-with-arity ())
+(define (evaluate-lambda n* e* r k)
+  (resume k (make-function-with-n-arity n* e* r (length n*))))
+(define-method (invoke (f function-with-n-arity) v* r k)
+  (define (extend-env env names values)
+    (if (pair? names) ;; there are more variable identifiers so extend with the car of names an values
+        (make-variable-env
+         (extend-env env (cdr name) (cdr values))
+         (car names)
+         (car values))
+        (make-variable-env env names values)))
+  (if (>= (length v*) (function-with-arity-arity f))
+      (let ((env (extend-env (function-env f)
+                         (function-variables f)
+                         v*)))
+        (evaluate-begin (function-body f) env k))
+      (wrong "Incorrect arity" (function-variables f) v*)))
+#+end_src
+*** 3.7
+From the text answer: To only call ~evaluate~ once when starting the interpreter you can place the call to ~evaluate~ inside of the initial continuation:
+#+begin_src scheme
+(define (chapter3-interpreter)
+  (letrec ((k.init (make-bottom-cont 'void
+                                     (lambda (v)
+                                       (display v)
+                                       (toplevel))))
+           (toplevel (lambda () (evaluate (read) r.init k.init))))
+    (toplevel)))
+#+end_src
+*** 3.8
+*** 3.9
+*** 3.10
+*** 3.11
+*** 3.12
+*** 3.13
+*** 3.14

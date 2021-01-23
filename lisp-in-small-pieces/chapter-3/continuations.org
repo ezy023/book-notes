@@ -1,0 +1,23 @@
+* Other notes on continuations
+- From R5S5
+  - Whenever a Scheme expression is evaluated there is a /continuation/ wanting the result of the expression. The continuation represents an entire future for the computation.
+  - Most of the time these continuation are hidden behind the scenes and programmers do not think much about them.
+  - When a programmer does need to deal with continuations explicitly the ~call-with-current-continuation~ (~call/cc~) procedure enables this by creating a procedure that acts just like the current continuation (this is called /reification/ of the continuation, it takes what was the implicit behavior and turns it into an explicity object that is made available to the program for use).
+
+** In my own words
+- Continuations are the point in the program that a subprocedure returns to and the program then picks up calculation from taht point. When we have a function call, the continuation of that function call is the calculation that is done or proceeds after it returns a value. Thus, for a simple program such as:
+     #+begin_src scheme
+       (define foo (+ 3 (* 2 4)))
+     #+end_src
+The function call to ~*~ has a continuation of ~(+ 3 _)~ because the function returns it value to that point in the program and then the program proceeds to use the value to continue evaluation of the form by adding it to ~3~. Thus, we could "capture" the continuation in a ~lambda~ form and use it as we would any other ~lambda~ with ~(lambda (x) (+ 3 x))~. Here, in the same way as above, the continuation of the program is the addition of ~3~ to whatever ~x~ is, in this example it would be the return value of ~(* 2 4)~ and so by capturing the continuation would look like ~((lambda (x) (+ 3 x)) (* 2 4))~. We could rewrite that to use ~call/cc~ in the following way:
+#+begin_src scheme
+(define k #f)
+(+ 3 (call/cc (lambda (kont)
+                (set! k kont)
+                2)))
+;; => 5
+
+(k 3)
+;; => 6
+#+end_src
+Above, ~k~ is now the continuation of the program, translated to a ~lambda~ ~k == (lambda (y) (+ 3 y))~. ~k~ "captures" the continuation of the program which is the addition of ~3~ to some value
