@@ -1,0 +1,91 @@
+* Chapter 2
+- Rust's goals are safe, performant systems programming
+** rustup and Cargo
+- ~cargo~ is Rust's compilation manager, package manager, and general-purpose tool.
+- ~rustc~ is the Rust compiler
+- ~rustdoc~ is the Rust documentation tool.i
+** Rust functions
+- By default, once a variable is initialized its value cannot be changed
+  - Places the ~mut~ keyword before a variable allows variable values to change
+- The ~!~ character on ~assert!~ in the ~gcd~ marks ~assert!~ as a macro invocation instead of a function call.
+  - Rust always checks assertions regardless of how the program was compiled
+    - There is a ~debug_assert!~ macros whose assertions are skipped when the program is compiled for speed
+- ~let~ declares a local variable
+- If a function body ends with an expression that is not followed by a semicolon, that's the function's return value.
+  - Any block surrounded by curly braces can function as an expression
+    #+begin_src rust
+      {
+          println("evaluating cos x");
+          x.cos()
+      }
+    #+end_src
+** Writing and Running Unit Tests
+#+begin_src rust
+#[test]
+fn test_gcd() {
+    assert_eq!(gcd(14, 15), 1);
+
+    assert_eq!(gcd(2 * 3 * 5 * 11 * 17,
+                   3 * 7 * 11 * 13 *19),
+               3 * 11)
+}
+#+end_src
+- ~#[test]~ marks the function as a test functiuon to be skipped in normal compilation, but included and called with ~$ cargo test~
+  - ~#[test]~ is an example of an /attribute/.
+    - Attributes are an open-ended system for marking functions  and other declarations with extra information (like annotations in Java).
+** Handling Command Line Arguments
+- A /trait/ is a collection of methods that types can implement.
+  - Although we never use the name ~FromStr~ elsewhere in the program (example ~hello~ program in this directory), a trait must be in scope in order to use its methods.
+- Functions that do anything that might fail can return ~Result~ types whose ~Ok~ variants carry successful results and whose ~Err~ variants carry an error code indicating what went wrong
+  - Rust does not have exceptions: all errors are handled using either ~Result~ or ~panic~
+- In the following loop:
+#+begin_src rust
+for m in &numbers[1..] {
+    d = gcd(d, *m);
+}
+#+end_src
+  - The ~&~ operator in ~&numbers[1..]~ is borrowing a reference to the vectors elements, from the second element onward, but ownership over the vector remains with ~numbers~
+  - ~m~ borrows eachelement in succession
+  - ~*~ dereferences ~m~ yield the value it refers to.
+** Serving Pages to the Web
+#+begin_src rust
+let server = HttpServer.new(|| {
+    App::new()
+        .route("/", web::get().to(get_index))
+});
+#+end_src
+- The argument passed to ~HttpServer.new()~ above is the Rust /closure/ expressiong ~|| { App::new() ... }~
+  - A closure is a value that can be called as if it were a function.
+** Concurrency
+- The same rules that ensure Rust Programs are free of memory errors also ensure threads can share memory only in ways that avoid data races.
+  - If your program compiles it is free of data races.
+- ~Option~ is an /enumerated type/ (/enum/) because its definition enumerates several variants that a value of this type could be
+  - For any type ~T~, ~Option<T>~ can be either ~Some(v)~ or ~None~`
+- The definition of ~parse_pair~ is a /generic function/
+#+begin_src rust
+fn parse_pair<T:FromStr>(s: &str, separator: char) -> Option<(T,T)>
+#+end_src
+  - ~<T:FromStr>~ is "For any type T that implements the FromStr trait"
+- Expressions of the form ~pixel.0~ refer to tuple elements
+  - ~pixel.0 as f64~ is syntax for a type conversion
+- ~()~ is the /unit/ type in Rust, akin to ~void~ in C and C++
+- The return value of ~File::create~ is ~Result<std::fs::File, std::io::Error>~. To properly handle the result we would need code like the following to assign to ~output~:
+#+begin_src rust
+  len output = match File::create(filename) {
+    Ok(f) => f,
+    Err(e) => {
+      return Err(e)
+    }
+  }
+#+end_src
+  - The above is such a common pattern that Rust has the ~?~ operator which allows us to just write
+    #+begin_src rust
+    let output = File::create(filename)?;
+    #+end_src
+- The ~move~ keyword at the beginning of the following closure indicates that this closure takes ownership of the variables it uses
+  #+begin_src rust
+  spawner.spawn(move |_| {
+      render(band, band_bounds, band_upper_left, band_lower_right);
+  });
+  #+end_src
+** Filesystems and Command-Line Tools

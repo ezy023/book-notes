@@ -7,3 +7,5 @@
 *.log
 *.pdf
 *.pem
+
+programming-rust/**/target

@@ -1,0 +1,2 @@
+* Preface
+- Systems programming is /resource-constrained/ programming, where every byte and CPU cycle counts
