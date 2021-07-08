@@ -1,0 +1,37 @@
+* Chapter 3
+- Rust's memory and thread safety guarantees rest on the soundness of its type system, and Rust's flexibility stems from its generic types and traits
+- Rust's /type inference/ system will figure most of the rest out from the types that you do give it
+- Functions can be /generic/: a single function can work on values of many different types
+  - Generic functions are just as efficient as their nongeneric counterparts
+** Fixed-Width Numeric Types
+- A /machine word/ is a value the size of an address on the machine the code runs on (32 or 64 bits)
+- Rust uses ~u8~ type for byte values
+- Rust treats characters as distinct from numeric types: a ~char~ is not a ~u8~
+  - Though Rust provides /byte literals/ for ~u8~ values: ~b'X'~ represents the ASCII code for the character "X"
+- When integer arithmetic overflows Rust panics in a debug build, but in a release build the operation wraps arounds.
+** Characters
+- Rust's character type ~char~ represents a single Unicode character as a 32-bit value
+- Rust uses the ~char~ type for single characters in isolation, but uses the UTF-8 encoding for strings and streams of text. Thus a ~String~ represents its text as a sequence of UTF-8 bytes, not an array of characters.
+** Pointer Types
+*** References
+- A value of type ~&String~ is a reference to a ~String~ value, a ~&i32~ is a reference to an ~i32~, etc.
+- At run time a reference to an ~i32~ (for example) is a single machine word holding the address of the ~i32~ which may be on the stack or heap
+- The expression ~&x~ produces a reference to ~x~, in Rust terms it /borrows a reference to x/
+- A reference does not automatically free any resources when it goes out of scope
+- Two flavors or Rust references
+  - ~&T~
+    - An immutable shared reference. Read-only. You can have multiple at a time
+  - ~&mut T~
+    - A mutable, exclusive reference. You can read and modify the value it points to but for as long as the reference exists you may not have any other references of any kind to that value. You may only access the value through the mutable reference.
+  - Rust uses this dichotomy between shared and mutagble references to enforce a "single writer or multiple readers" rule. Either you can read and write the value, or it can be shared by any number of readers, but never both at the same time.
+** Arrays, Vectors, and Slices
+*** Slices
+- A slice is a region of an array or vector. It cannot be stored directly in variables or passed as function arguments. They are always passed by reference
+  - A reference to a slice is a /fat pointer/: a two-word value comprising a pointer to the slice's first element and the number of elements in the slice
+** Strings
+- Rust strings are sequences of Unicode characters, but they are not stroed in memory as arrays of chars. Instead they are stored using UTF-8 encoding.
+- A ~&str~ (string slice) is a reference to a run of UTF-8 text owned by someone else: it "borrows" the text.
+  - Also a fat pointer containing the address of the data and its length
+  - A ~&str~ cannot be modified
+- ~String~ is analogous to ~Vec<T>~
+- ~&str~ can refer to a slice of any string, whether a string literal (stored in the executable) or a ~String~ created and freed at runtime.
