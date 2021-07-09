@@ -1,0 +1,25 @@
+* Chapter 4 - Ownership and Moves
+** Ownership
+- In Rust, every value has a single-owner that determines its lifetime. When the owner is freed (/dropped in Rust terminology) thw owned value is dropped too.
+- Just as variables own their values, structs own their fields, and tuples, arrays, and vectors own their elements
+- Owners and their owned values form /trees/: your owner is your parent, and the values you own are your children. And at the ultimate root of each tree is a variable, when that variable goes out of scop the entire tree goes with it.
+  - Every value in a Rust program is a member of some tree, rooted in some variable.
+- Very simple types like integers, floating-point numbers, and characters are excused from the ownership rules. These are called Copy types
+- You can "borrow a reference" to a value; references are non-owning pointers with limited lifetimes
+** Moves
+- In Rust, for most types, operations like assigning a value to a variable, passing it to a function, or returning it from a function don't copy the value: the /move/ it.
+  - The source relinquishes ownership of the value to the destination and becomes uninitialized; the destination now controls the values lifetime.
+** Copy Types: The Exception to Moves
+- Moving a value leaves the source of the move uninitialized, but for simpler types the advantages to moves do not apply and moves are inconvenient.
+- General rule: Any type that needs to do something special when a value is dropped cannot be ~Copy~
+- By default user-defined types, like struct and enum types, are not ~Copy~
+  - Making a type ~Copy~ represents a serious commitment on the part of the implementer because ~Copy~ types are very limited in which types they can contain.
+    - If it is necessary to turn a ~Copy~ type into a non-~Copy~ type later much of the code that uses it will probably need to be adapted
+** Rc and Arc: Shared Ownership
+- ~Rc~ and ~Arc~ are reference counted pointer types
+  - The are very similar, the only difference between them is that ~Arc~ (/atomic reference count/) is safe to share between threads directly. ~Rc~ uses faster, non-thread-safe code to update its reference count.
+- A value owned by an ~Rc~ pointer is immutable
+- Rust's memory and thread-safety guarantees depend on ensuring that no value is ever simultaneously shared and mutable. Rust assumes the referent of an ~Rc~ pointer might be shared so it must not be mutable.
+- One problem with using reference counts to manage memory is that if there are ever two reference-counted values that point to each other, each willl hold the other's reference count above zero so the values will never be freed
+  - It is possible to leak memory in Rust this way but such situations are rare.
+  - You can sometimes avoid creating cycles of ~Rc~ pointers by using /weak pointers/, ~std::rc::Weak~
