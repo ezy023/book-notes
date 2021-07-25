@@ -1,0 +1,51 @@
+* Chapter 5 - References
+- For owning pointers, when the owner is dropped the referent (the thing it points to, refers to) goes with it.
+- Rust also has non-owning pointer types called /references/ which have no effect on their referents lifetimes.
+  - References must never outlive their referents
+  - Rust refers to creating a reference to some value as /borrowing/ the value. Eventually you must return it to its owner.
+** References to Values
+- A reference lets you access a value without affecting its ownership
+  - There are two kinds of references
+    - /shared reference/ lets you read but not modify its referent.
+      - You can have as many shared references to a particular value at a time as you like
+      - Shared references are ~Copy~
+      - As long as there are shared references to a value not even the values owner can modify it.
+    - /mutable reference/ allows you to both read and modify the value.
+      - You may not have any other references of any sort to that value active at the same time.
+  - The distinction between shared and mutable references is a way to enforce a /multiple readers/ or /single writer/ rule at compile time.
+** Working with References
+- In Rust the ~.~ operator implicitly dereferences its left operand, if needed
+  - The ~.~ operator can also implicitly borrow a reference to its left operand, if needed for method call
+- Rust references are never null.
+  - There is no default initial value for a reference.
+- Rust also includes two kinds of /fat pointers/, two-word values carrying the address of some value, along with further information necessary to put the value to use
+  - A reference to a slice is a fat pointer, carrying the starting address of the slice and its length.
+  - A reference to a /trait object/ is also a fat pointer, carrying a value's address and a pointer to the trait's implementation appropriate to that value for invoking the trait's methods.
+** Reference Safety
+*** Borrowing a Local Variable
+- Rust tries to assign each reference type in your program a /lifetime/. A lifetime is some stretch of your program for which a reference could be safe to use:  a statement, an expressions, the scope of some variable, etc.
+- You can't borrow a reference ot a local variable and take it out of the variable's scope
+  - if you have a variable ~x~, then a reference to ~x~ must not outlive ~x~ itself.
+  - if you store a reference in a variable ~r~, the reference's type must be good for the entire lifetime of the variable, from its initialization until its last use
+  - if you store a reference in some data structure, its lifetime must enclose that of the data structure.
+*** Receiving References as Function Arguments
+The following function:
+#+begin_src rust
+fn f(p: &i32) {...}
+#+end_src
+Has an actual signature -- due to what Rust lets us omit -- of:
+#+begin_src rust
+fn f<'a>(p: &'a i32) {...}
+#+end_src
+Where ~'a~ represents a /lifetime parameter/ of ~f~. It can be read as "for any lifetime 'a" so when we write ~fn f<'a>(p: &'a i32)~ we're defining a function that takes a reference to an ~i32~ with any given lifetime ~'a~
+- In Rust a function's signature always exposes the body's behavior
+- Lifetimes in function signatures let Rust assess the relationships between the references you pass to the function and those the function returns, and they ensure they're being used safely.
+- Whenever a reference type appears inside another type's definition (e.g. a struct), you must write out its lifetime.
+  - A type's lifetime parameters always reveal whether it contains references with interesting (non-'static) lifetimes and what those lifetimes can be.
+- The downside to adding lifetimes to function signatures is they make it harder to read. An acceptable approach to this is to start with the simplest possible definition and then loosen restrictions until the code compiles. Since Rust won't permit the code to run unless its safe, simply waiting to be told when there's a problem is a perfectly acceptable tactic.
+** Shareing vs. Mutation
+- Throughout its lifetime a shared reference makes its referent read-only: you may not assign to the referent or move its value elsewhere
+- **Shared access is read-only access**
+  - Values borrowed by shared references are read-only. Across the lifetime of a shared reference, neither its referent, nor anything reachable from that referent can be changed by /anything/. There exist no live mutable references to anything in that structure, its owner is held read-only and so on. It's really frozen
+- **Mutable access is exclusive access**
+  - A value borrowed by a mutable reference is reachable exclusively via that rerference. Across the lifetime of a mutable reference, there is no other usable path to its referent or to any value reachable from there. The only references whose lifetimes may overlap with a mutable reference are those you borrow from the mutable reference itself.
