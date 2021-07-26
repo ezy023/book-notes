@@ -1,0 +1,98 @@
+* Chapter 8 - Crates and Modules
+** Crates
+- Rust programs are made of /crates/.
+  - Each crate is a complete, cohesive unit: all the source code for a single library or executable, plus any associated tests, examples, tools, configuration, etc.
+- /Transitive dependencies/ are dependencies (crates) that a program depends on indirectly through the use of another crate.
+- The collection of all the dependency relationships crate is a /dependency graph/
+*** Editions
+- If the ~edition~ keyword is missing from a ~Cargo.toml~ file then ~edition = "2015"~ is assumed
+- A crate's edition only affects how its source code is construed; edition distinctions are gone by the time the code has been compiled.
+- You only need to change editions when you want to use new language features in your own code.
+- For new code it is almost always a good idea to use the latest edition
+*** Build Profiles
+- When using a profiler, to get the best data you need both optimizations (release builds) and debug symbols (debug builds). To enable both add the following to the ~Cargo.toml~ file:
+#+begin_src toml
+[profile.release]
+debug = true # enable debug symbols in release builds
+#+end_src
+** Modules
+- Whereas crates are about code sharing between projects, modules are about code organiztion within a project.
+- Modules act as Rust's namespaces
+  - Example:
+    #+begin_src rust
+      mod spores {
+        use cells::{Cell, Gene};
+        pub struct Spore {...}
+        pub fn produce_spore(factory: &mut Sporangium) -> Spore {...}
+        pub(crate) fn genes(spore: &Spore) -> Vec<Gene> {...}
+        fn recombine(parent: &mut Cell) {...}
+      }
+    #+end_src
+    - The ~pub~ keyword makes an item public so it can be accessed from outside the module.
+      - aka "exporting"
+    - ~pub(crate)~ means the it is available anywhere inside this crate, but not exposed through the external interface.
+    - Anything that isn't ~pub~ can only be used in the same module in which it is defined, or any child modules
+- Modules can nest
+  - If you want an item in a nested module to be visible to other crates, mark it and /all enclosing modules/ public
+- Modules can also be written in separate files with the following syntax:
+  #+begin_src rust
+    mod spores;
+
+    // spores.rs
+    pub struct Spore {...}
+    ...
+  #+end_src
+  - A modules can have its own directory. When Rust sees ~mod spores;~ it checks for both ~spores.rs~ and ~spores/mod.rs~. One and only one can exist
+- The ~::~ operator is used to access features of a module.
+- The ~use~ declaration imports features into the module where they're used
+  - The preferred style is to import types, traits, and modules, and then use relative paths to access the functions, constants, and other members within.
+- Modules do /not/ automatically inherit names from their parent modules.
+- By default, ~use~ paths are relative to the current module
+  - ~super~ refers to the parent module. ~crate~ refers to the crate containing the current module.
+- Submodules can access private items in their parent modules with ~use super::*~
+- To resolve ambiguity, there is a special kind of path called an /absolute path/ starting with ~::~ which always refers to an external crate
+- The standard library ~std~ is automatically linked with every project, and some stuff is included in the /standard prelude/
+  - Rust behaves as though every module started with: ~use std::prelude::v1::*;~
+** Turning a Program into a Library
+- First, factor existing project into two parts: a library crate, and an executable.
+  - Rename ~src/main.rs~ to ~src/lib.rs~ and move the ~main()~ function
+- When cargo sees a file ~src/lib.rs~ it knows to build a library
+** The src/bin Directory
+- Cargo has some built-in support for small programs that live in the same crate as a library.
+  - Putting code in ~src/bin/<filename>.rs~ will inform cargo to compile both the library and the program with ~cargo build~. It automatically treats ~.rs~ files in ~src/bin~ as extra programs to build.
+- The ~src/bin~ directory is just right for simple programs
+** Attributes
+- Any item in a Rust program can be decorated with /attributes/. Attributes are Rust's catchall syntax for writing miscellaneous instructions and advice to the compiler.
+  - conditional compilation can be accomplished with attributes
+- To attach an attribute to a whole crate add it at the top of the ~main.rs~ or ~lib.rs~ file before any items and use ~#!~ instead of ~#~ e.g. ~#![allow(non_camel_case_types)]~
+** Tests and Documentation
+- Tests are ordinary functions marked with the ~#[test]~ attribute
+- The convention when your tests get substantial enough to require support code is to put them in a tests module and declare the whole module to be testing-only using the ~#[cfg]~ attribute:
+#+begin_src rust
+  #[cfg(test)]
+  mod test {
+    ...
+  }
+#+end_src
+- To show the output of tests that pass too use ~$ cargo test -- --no-capture~
+- Integration tests are ~.rs~ files taht live in a ~tests~ directory alongside the project's ~src~ directory
+*** Documentation
+- Comments beginning with three slashes, ~///~ are treated as a ~#[doc]~ attribute.
+- The content of a doc comment is treated as Markdown
+- When you include a block of code in a doc comment Rust automatically turns it into a test
+** Specifying Dependencies
+- You can specify dependencies a number of ways
+  - With the version number;
+    #+begin_src toml
+    image = "0.6.1"
+    #+end_src
+  - With a Git repository URL and revision:
+    #+begin_src rust
+    image = { git = "https://github.com/Piston/image.git",rev = "528f19c" }
+    #+end_src
+  - With a path to a directory that contains the crate's soure code
+    #+begin_src rust
+    image = { path = "vendor/image" }
+    #+end_src
+- The first time your build a project cargo outpus a ~Cargo.lock~ file that records the exact version of every crate it used. Later builds consult this file and continue to use the same versions.
+  - Cargo only upgrades to newer versions when you tell it to by manually bumping up the version number or running ~cargo update~
