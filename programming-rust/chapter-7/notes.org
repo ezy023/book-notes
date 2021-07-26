@@ -1,0 +1,24 @@
+* Chapter 7 - Error Handling
+** Panic
+- Panics happen when the program encounters something that must be a bug in the program itself. Almost all of the time panics are a result of programmer error.
+  - Panic scenarios:
+    - out-of-bounds array access
+    - integer division by zero
+    - assertion failure
+  - When a panic happens Rust can either unwind the stack or abort the process. The default behavior is to unwind the stack
+*** Unwinding
+- When Rust unwinds the stack in response to a panic any temporary values, local variables, or arguments the current function is using are dropped (cleaned up). Once the current function call is cleaned it works its way up the stack to the function's caller and so on. Finally the thread exits.
+** Result
+- Rust doesn't have exceptions, instead it has the ~Result~ return type that indicates possible failure of a function call..
+- The most common way to deal with a ~Result~ is using a ~match~ expression
+  #+begin_src rust
+    match get_weather(hometown) {
+      Ok(report) => {
+        display_weather(hometown, &report);
+      }
+      Err(err) => {
+        println!("error querying the weather: {}", err);
+        schedule_weather_retry();
+      }
+    }
+  #+end_src
