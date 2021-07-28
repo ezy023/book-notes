@@ -1,0 +1,29 @@
+* Chapter 6 - Expressions
+- /Expressions/ are the building blocks that make up the body of Rust functions and thus the majority of Rust code.
+** An Expression Language
+- Expressions have values, statements don't.
+- Rust is an /expression language/, meaning expressions do all the work (like in Lisp)
+  - For example, ~if~ and ~match~ are expressions that can yield values and can be used in assignment, function args, etc.
+  - Control flow tools in Rust are all expressions
+** Blocks and Semicolons
+- Blocks are the most general kind of expression. A block produces a value and can be used anywhere a value is needed
+  - When you leave a semicolon off the last line of a block that makes the value of the block the value of its final expression rather than ~()~
+** Declarations
+- A block can contain /item declarations/. An item is simply any declaration that could appear globally in a program or module, such as a ~fn~, ~struct~, or ~use~
+** if and match
+- Each condition in an ~if~ expression must be an expression of type ~bool~.
+- ~match~ expressions are like the C ~switch~ statement but more flexible
+  - Wildcard pattern ~_~ matches everything, similar to ~default~ in a ~switch~
+  - A match pattern can match a range of values.
+  - Rust prohibits match expressions that do not cover all possible values
+- All blocks of an ~if~ expression must produce values of the same type, same for all arms of a ~match~
+- ~if let~ is shorthand for a ~match~ with just one pattern
+** Loops
+- A ~for~ loop over a value consumes the value due to Rust's move semantics
+  - The remedy to this incovenience is to loop over a reference to the collection instead so that the loop variable is a reference to each item in the collection rather than consuming the actual item.
+- You can give ~break~ an expression which becomes the value of the loop
+** return
+- Functions don't have to have an explicit return expression. The body of a function works like a block expression: if the last expression isn't followed by a semicolon, its value is the function's return value. This is the preferred way to supply a function's return value in Rust.
+- A /divergent function/ is a function that never returns
+** Misc.
+- /lvalues/ are expressions that can appear on the left side of an assignment
