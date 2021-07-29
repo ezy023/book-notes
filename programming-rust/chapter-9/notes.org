@@ -1,0 +1,104 @@
+* Chapter 9 - Structs
+- Rust has three kinds of struct types, /named-field/, /tuple-like/, and /unit-like/
+** Named-Field Structs
+- Structs are private by default and can be made visible through use of ~pub~. Same for each of the struct's fields
+** Tuple-Like Structs
+- These structs resemble tuple
+#+begin_src rust
+  struct Bounds(usize, usize);
+
+  let image_bounds = Bounds(1024, 768);
+#+end_src
+- Tuple-like structs are good for /newtypes/, structs with a single component that you define to get stricter type checking.
+** Unit-Like Structs
+- A struct type with no elements at all
+#+begin_src rust
+struct Onesuch;
+#+end_src
+- A value of such type occupies no memory, like the unit type ~()~. But it is a type like any other
+** Defining Methods with ~impl~
+- Rust methods appear in a separate ~imple~ block
+  - An ~impl~ bock is simply a collection of ~fn~ definitions, each of which becomes a method on the struct type named at the top of the block
+    #+begin_src rust
+    pub struct Queue {
+      older: Vec<char>,
+      younger: Vec<char>
+    }
+
+    impl Queue {
+      pub fn push(&mut self, c: char) {
+        self.younger.push(c);
+      }
+      ...snip...
+    }
+    #+end_src
+- Functions defined in an ~imple~ block are called /associated functions/
+- Rust passes a method the value it's being called on as its first argument which has the special name ~self~.
+  - A Rust method must explicitly use ~self~ to refere to the value it was called on (similar to how Python uses ~self~)
+- Rust will implicitly borrow the proper type of reference, depending on the type of ~self~ reference in the method signature
+- An ~impl~ block can also define functions that don't take ~self~ as an argument at all. These are /type-associated functions/, but not methods since they don't take ~self~ as an arg.
+  - Type-associated functions are referred to using ~::~, e.g. ~T::new()~
+- You can have multiple ~impl~ blocks for a single type but they must all be in the same crate that defines that type.
+** Associated Consts
+- /Associated consts/ are values associated with a type, rather than a specific instance of that type.
+  - Often used to specify commonly used values of a type.
+    #+begin_src rust
+    struct Vector2 {
+      x: f32,
+      y: f32,
+    }
+
+    impl Vector2 {
+      const ZERO: Vector2 = Vector2 { x: 0.0, y: 0.0 };
+      const UNIT: Vector2 = Vector2 { x: 1.0, y: 0.0 }:
+      const ID: u32 = 18;
+    }
+
+    // can be used like
+    let scaled = Vector2::UNIT.scaled_by(2.0);
+    #+end_src
+** Generic Structs
+- Rust structs can be /generic/, their definition being a template into which you can plug whatever types you like.
+#+begin_src rust
+  pub struct Queue<T> {
+    older: Vec<T>,
+    younger: Vecc<T>
+  }
+
+  impl <T> Queue<T> {
+    pub fn new() -> Queue<T> {
+      Queue { older: Vec::new(), younger: Vec::new() }
+    }
+
+    pub fn push(&mut self, t: T) {
+      self.younger.push(t);
+    }
+
+    ...snip...
+  }
+#+end_src
+- In every ~impl~ block Rust defines the special type parameter ~Self~ to be whatever type we're adding methods to.
+#+begin_src rust
+  impl <T> Queue<T> {
+    pub fn new() -> Self {
+      Queue { older: Vec::new(), younger: Vec::new() }
+    }
+  }
+#+end_src
+- For associated function calls, you can supply the type parameter explicity using the ~::<>~ (turbofish) notation: ~let mut q = Queue::<char>::new();~, but usually Rust can figure it out.
+** Structs with Lifetime Parameters
+- If a struct contains references, you must name those references' lifetimes
+** Deriving Common Traits for Struct Types
+- Rust can automatically implement some traits for you through the use of a ~#[derive]~ attribute
+#+begin_src rust
+  #[derive(Copy,Clone,Debug,PartialEq)]
+  struct Point {
+    x: f64,
+    y: f64
+  }
+#+end_src
+- The traits can be implemented automatically for the struct so long as each of the struct's fields implements the trait.
+  - Implementing a trait is automatically a public feature, and part of your struct's public API.
+** Interior Mutability
+- Refer to ~Cell~ and ~RefCell~ documentation
+  - Cells -- and any types that contain them -- are not thread-safe
