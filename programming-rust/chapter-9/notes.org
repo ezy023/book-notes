@@ -32,7 +32,7 @@ struct Onesuch;
       ...snip...
     }
     #+end_src
-- Functions defined in an ~imple~ block are called /associated functions/
+- Functions defined in an ~impl~ block are called /associated functions/
 - Rust passes a method the value it's being called on as its first argument which has the special name ~self~.
   - A Rust method must explicitly use ~self~ to refere to the value it was called on (similar to how Python uses ~self~)
 - Rust will implicitly borrow the proper type of reference, depending on the type of ~self~ reference in the method signature
@@ -88,6 +88,13 @@ struct Onesuch;
 - For associated function calls, you can supply the type parameter explicity using the ~::<>~ (turbofish) notation: ~let mut q = Queue::<char>::new();~, but usually Rust can figure it out.
 ** Structs with Lifetime Parameters
 - If a struct contains references, you must name those references' lifetimes
+  - Example
+    #+begin_src rust
+    struct Extrema<'elt> {
+      greatest: &'elt i32,
+      least: &'elt i32
+    }
+    #+end_src
 ** Deriving Common Traits for Struct Types
 - Rust can automatically implement some traits for you through the use of a ~#[derive]~ attribute
 #+begin_src rust

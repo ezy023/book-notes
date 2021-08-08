@@ -44,6 +44,7 @@ debug = true # enable debug symbols in release builds
   #+end_src
   - A modules can have its own directory. When Rust sees ~mod spores;~ it checks for both ~spores.rs~ and ~spores/mod.rs~. One and only one can exist
 - The ~::~ operator is used to access features of a module.
+- The ~pub~ keyword in front of ~mod~ only lets code in its ancestor modules refer to it. (_The Rust Programming Language, 7.3_)
 - The ~use~ declaration imports features into the module where they're used
   - The preferred style is to import types, traits, and modules, and then use relative paths to access the functions, constants, and other members within.
 - Modules do /not/ automatically inherit names from their parent modules.
@@ -75,7 +76,7 @@ debug = true # enable debug symbols in release builds
   }
 #+end_src
 - To show the output of tests that pass too use ~$ cargo test -- --no-capture~
-- Integration tests are ~.rs~ files taht live in a ~tests~ directory alongside the project's ~src~ directory
+- Integration tests are ~.rs~ files that live in a ~tests~ directory alongside the project's ~src~ directory
 *** Documentation
 - Comments beginning with three slashes, ~///~ are treated as a ~#[doc]~ attribute.
 - The content of a doc comment is treated as Markdown
