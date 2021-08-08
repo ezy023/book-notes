@@ -1,0 +1,90 @@
+* Chapter 10 - Enums and Pattern
+** Enums
+- Enums in Rust can contain data, even data of varying types.
+  - e.g. the ~Result~ type, it is either ~Ok~ with a value or an ~Err~
+  - They are useful whenever a value might be either one thing or another.
+- Enum variants that take arguments are called /tuple variants/
+  #+begin_src rust
+  #[derive(Copy,Clone,Debug,PartialEq)]
+  enum RoughTime {
+    InThePast(TimeUnit, u32),
+    JustNow,
+    InTheFuture(TimeUnit, u32),
+  }
+
+  let three_hours_from_now = RoughTime::InTheFuture(TimeUnit::Hours, 3);
+  #+end_src
+- Enums can also have /struct variants/ which contain named fields just like ordinary structs:
+  #+begin_src rust
+  enum Shape {
+    Sphere { center: Point3d, radius: f32},
+    Cuboid { corner1: Point3d, corner2: Point3d},
+  }
+  #+end_src
+- A single enum can mix variants.
+- Enums can be generic:
+    #+begin_src rust
+    enum Option<T> {
+      None,
+      Some(T),
+    }
+
+    enum Result<T, E> {
+      Ok(T),
+      Err(E),
+    }
+    #+end_src
+** Patterns
+- The ~match~ expression performs pattern matching.
+- Expressions /produce/ values; patterns /consume/ values.
+- When a pattern contains simple identifiers those identifiers become local variables in the code following the pattern. Whatever is present in the value is copied or moved into the new variables.
+- Pattern matching works hand in hand with enums and can even tests the data they contain.
+- ~match~ can be used with other types besides enums as a nice replacement for the C ~switch~ statement.
+- The ~_~ is the wildcard pattern for matching
+  - It matches any value but does not store it anywhere.
+- Rust requires every ~match~ expression to handle all possible values. Wildcard matches are helpful for cases where you are not concerned with some of the potential matches.
+*** Reference Patterns
+- Matching a non-copyable value moves the value.
+  - Using the ~ref~ keyword in a pattern match borrows matched values instead of moving them:
+    #+begin_src rust
+      match account{
+        Account { ref name, ref language, .. } => {
+          ui.great(name, language);
+          ui.show_settings(&account); // ok because we borrow references to 'name' and 'language' instead of moving them.
+        }
+      }
+    #+end_src
+  - ~ref mut~ borrows mutable references
+- A pattern starting with ~&~ matches a reference.
+*** Match guards
+- /match guards/ are extra conditions that must be true in order for a match arm to apply.
+  - Example:
+    #+begin_src rust
+    match point_to_hex(click) {
+      None => Err("That's not a game space"),
+      Some(hex) if hex == current_hex =>
+        Err("You are already there! Click somewhere else"),
+      Some(hex) => Ok(hex)
+    }
+    #+end_src
+*** Where Patterns are allowed
+- Patterns are most common in ~match~ expressions, but can be used elsewhere
+  - Example:
+    #+begin_src rust
+    // unpack a struct into three new local variables
+    let Track { album, track_number, title, .. } = song;
+
+    // unpack a function argument that's a tuple
+    fn distance_to((x, y): (f64,f64)) -> f64 { ... }
+
+    // iterate over keys and values of a HashMap
+    for (id, document) in &cache_map {
+      ...
+    }
+
+    // automatically dereference an argument to a closure
+    let sum = numbers.fold(0, |a, &num| a + num);
+    #+end_src
+- Patterns that always match are called /irrefutable patterns/.
+- A /refutable pattern/ is one that might not match.
+- "Programming is data processing. Getting data into the right shape can be the difference between a small, fast, elegant program and a slow, gigantic tangle of duct tap and virtual method calls."
