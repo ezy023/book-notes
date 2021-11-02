@@ -1,0 +1,5 @@
+* Chapter 19 - Concurrency
+** ~Send~ and ~Sync~
+- Types that implement ~Send~ are safe to pass by value to another thread. They can be _moved_ across threads.
+  - When you spawn a thread, the closure you pass must be ~Send~, which means all the values it contains must be ~Send~.
+- Types that implement ~Sync~ are safe to pass by non-mutable reference to another thread. They can be _shared_ across threads.
