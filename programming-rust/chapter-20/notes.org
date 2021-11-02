@@ -1,0 +1,15 @@
+* Chapter 20 - Asynchronous Programming
+- The ~'static~ lifetime is the default for ~-> impl~ return types
+- Polling of futures on a thread pool allows for any thread in the pool that is free to pick up and poll the future task. This means the future task can be shuffled amongst theads that do the work of polling, and if the ~Future~ is using thread-local storage the thread local values can be replaced by something entirely different. Thus if you use thread-local storage you seek more control over the execution of your task or use another means of storage (e.g. task local storage)
+- The ~Send~ trait signifies the value and the values it contains are all ~Send~, which means they are safe to move to another thread.
+- futures represent a value you have to wait for
+- In Rust, an async call (future) does nothing until you pass it to a function that will poll it and drive the work to completion. These functions are called _executors_
+** Primitive Futures and Executors: When is a Future Worth Polling Again?
+- When an executor like ~block_on~ polls a future, it must pass in a callback called a _waker_, which must be arranged to be invoked later when the future is worth polling again if the future returns ~Poll::Pending~
+  - In ~async_std::net::TcpStream::connect~ it hands the ~Waker~ to a helper thread that waits for the connection to be ready, and then invokes the waker.
+** Pinning
+- A future must always hold all the information needed to resume execution the next time it is polled
+- In a synchronous function all local variables live on the stack, but in an asynchronous function local variables that are alive across an ~await~ must be located in the ~future~ so they'll be available when it is polled again.
+- Rust requires values not be moved while they are borrowed
+  - Futures are always safe to move when they are first created and only become unsafe to move when they are polled.
+- ~Pin~ is a wrapper for pointer types that restricts how the pointers can be used, ensuring their referents cannot ever be moved again.
